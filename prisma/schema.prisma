@@ -1,0 +1,397 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+
+  /// 로컬 로그인만 쓰면 필수로 둬도 되지만,
+  /// 소셜 로그인까지 고려하면 nullable 권장
+  password  String?
+  nickname  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  coupleMembers        CoupleMember[]
+  diaries              Diary[]
+  todos                Todo[] // assigned todos
+  notifications        Notification[]
+  notificationSettings NotificationSetting?
+
+  // created invites
+  createdInvites       CoupleInvite[] @relation("InviteCreator")
+
+  // couple messages
+  coupleMessages       CoupleMessage[]
+  messageHistory       MessageHistory[]
+
+  @@map("users")
+}
+
+model Couple {
+  id        String   @id @default(uuid())
+  startDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  members         CoupleMember[]
+  diaries         Diary[]
+  todos           Todo[]
+  bucketlistItems BucketlistItem[]
+  anniversaries   Anniversary[]
+  placeMarkers    PlaceMarker[]
+
+  /// ✅ 초대코드 이력 관리 (재발급/만료/철회 등)
+  invites         CoupleInvite[]
+
+  /// (선택) "현재 활성 초대"를 빠르게 찾고 싶다면 하이브리드로 유지 가능
+  /// 활성 invite를 매번 조회하는 게 싫으면 아래 2줄을 사용:
+  // currentInviteId String?
+  // currentInvite   CoupleInvite? @relation("CurrentInvite", fields: [currentInviteId], references: [id])
+
+  /// ✅ 단방향 메시지 시스템
+  coupleMessages  CoupleMessage[]
+  messageHistory  MessageHistory[]
+
+  @@map("couples")
+}
+
+/// ✅ 초대코드 엔티티 (핵심)
+/// - 1회용/다회용, 만료, 철회, 사용횟수, 생성자, 이력까지 모두 지원
+model CoupleInvite {
+  id        String            @id @default(uuid())
+  code      String            @unique
+  status    InviteStatus      @default(ACTIVE)
+
+  maxUses   Int               @default(1)
+  uses      Int               @default(0)
+
+  expiresAt DateTime?
+  revokedAt DateTime?
+  consumedAt DateTime?
+
+  createdAt DateTime          @default(now())
+
+  coupleId  String
+  couple    Couple            @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?           @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// 누가/언제 사용했는지 추적하고 싶으면 별도 테이블로 확장 가능(아래 참고)
+  // inviteUsages CoupleInviteUsage[]
+
+  @@index([coupleId])
+  @@index([status])
+  @@map("couple_invites")
+}
+
+model CoupleMember {
+  id       String   @id @default(uuid())
+  joinedAt DateTime @default(now())
+  role     CoupleRole @default(OWNER)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, coupleId])
+  @@index([coupleId])
+  @@map("couple_members")
+}
+
+model Diary {
+  id          String     @id @default(uuid())
+  title       String
+  content     String
+  mood        String?
+  weather     String?
+  recordDate  DateTime
+  visibility  Visibility @default(BOTH)
+  isScheduled Boolean    @default(false)
+  scheduledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  placeId String?
+  place   Place?  @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  images            DiaryImage[]
+  diaryTags         DiaryTag[]
+  bucketlistDiaries BucketlistDiary[]
+
+  // ✅ 이 다이어리에서 생성된 방문 마커들
+  placeMarkers PlaceMarker[] @relation("DiaryPlaceMarkers")
+
+  @@index([coupleId])
+  @@index([authorId])
+  @@map("diaries")
+}
+
+model DiaryImage {
+  id        String   @id @default(uuid())
+  url       String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  diaryId String
+  diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+
+  @@index([diaryId])
+  @@map("diary_images")
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String @unique
+
+  diaryTags DiaryTag[]
+
+  @@map("tags")
+}
+
+model DiaryTag {
+  diaryId String
+  diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+
+  tagId String
+  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([diaryId, tagId])
+  @@map("diary_tags")
+}
+
+model PlaceCategory {
+  id   String  @id @default(uuid())
+  name String  @unique
+  icon String?
+
+  places Place[]
+
+  @@map("place_categories")
+}
+
+model Place {
+  id      String  @id @default(uuid())
+  name    String
+  lat     Float
+  lng     Float
+  address String?
+
+  categoryId    String?
+  placeCategory PlaceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  diaries Diary[]
+  markers PlaceMarker[]
+
+  @@map("places")
+}
+
+model PlaceMarker {
+  id        String     @id @default(uuid())
+  type      MarkerType
+  createdAt DateTime   @default(now())
+
+  visitedAt DateTime?
+
+  // ✅ 다이어리에서 생성된 방문 마커라면 연결
+  diaryId String?
+  diary   Diary? @relation("DiaryPlaceMarkers", fields: [diaryId], references: [id], onDelete: SetNull)
+
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  /// ✅ 마커는 커플 소속 데이터면 non-null 강추
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  @@index([coupleId])
+  @@index([placeId])
+  @@map("place_markers")
+}
+
+model Anniversary {
+  id          String   @id @default(uuid())
+  title       String
+  date        DateTime
+  isRecurring Boolean  @default(true)
+  type        AnniversaryType @default(CUSTOM)
+  createdAt   DateTime @default(now())
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  @@index([coupleId])
+  @@map("anniversaries")
+}
+
+model Todo {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      TodoStatus @default(PENDING)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  assigneeId String?
+  assignee   User?   @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([coupleId])
+  @@index([assigneeId])
+  @@map("todos")
+}
+
+model BucketlistItem {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  isDone      Boolean   @default(false)
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  bucketlistDiaries BucketlistDiary[]
+
+  @@index([coupleId])
+  @@map("bucketlist_items")
+}
+
+model BucketlistDiary {
+  bucketlistItemId String
+  bucketlistItem   BucketlistItem @relation(fields: [bucketlistItemId], references: [id], onDelete: Cascade)
+
+  diaryId String
+  diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+
+  @@id([bucketlistItemId, diaryId])
+  @@map("bucketlist_diaries")
+}
+
+model NotificationSetting {
+  id                String   @id @default(uuid())
+  pushNotify        Boolean  @default(true)
+  anniversaryNotify Boolean  @default(true)
+  diaryReminder     Boolean  @default(true)
+  emailNotify       Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+enum Visibility {
+  BOTH
+  PRIVATE
+}
+
+enum MarkerType {
+  VISITED
+  WISHLIST
+}
+
+enum TodoStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum CoupleRole {
+  OWNER
+  PARTNER
+}
+
+enum InviteStatus {
+  ACTIVE
+  CONSUMED
+  REVOKED
+  EXPIRED
+}
+
+enum AnniversaryType {
+  CUSTOM
+  RELATIONSHIP
+  BIRTHDAY
+  MILESTONE
+}
+
+/// ✅ 커플 메시지 (현재 메시지)
+/// - 각 사용자가 작성한 현재 메시지 (coupleId + authorId 유니크)
+/// - 내가 작성한 메시지는 상대방 대시보드에 표시
+model CoupleMessage {
+  id        String   @id @default(uuid())
+  content   String   // 최대 100자
+
+  coupleId  String
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([coupleId, authorId])
+  @@index([coupleId])
+  @@map("couple_messages")
+}
+
+/// ✅ 메시지 이력
+/// - 메시지가 변경될 때마다 이력 저장
+model MessageHistory {
+  id        String   @id @default(uuid())
+  content   String
+
+  coupleId  String
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([coupleId, authorId])
+  @@index([createdAt])
+  @@map("message_history")
+}

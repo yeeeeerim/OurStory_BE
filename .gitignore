@@ -1,0 +1,69 @@
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Build output
+# =========================
+dist/
+build/
+coverage/
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Cache
+# =========================
+.cache/
+.nest/
+.eslintcache
+tsconfig.tsbuildinfo
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Test
+# =========================
+jest-cache/
+coverage/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Optional: Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Optional: Prisma (사용 시)
+# =========================
+prisma/dev.db
+prisma/*.db
