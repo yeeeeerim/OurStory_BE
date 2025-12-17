@@ -241,9 +241,12 @@ export class CoupleService {
       : null;
 
     const daysCount = relationshipStartDate
-      ? Math.floor(
-          (referenceDate.getTime() - relationshipStartDate.getTime()) /
-            this.msPerDay,
+      ? Math.max(
+          Math.floor(
+            (referenceDate.getTime() - relationshipStartDate.getTime()) /
+              this.msPerDay,
+          ) + 1,
+          1,
         )
       : 0;
     const birthdayAnniversaries = anniversaries.filter(
@@ -521,16 +524,21 @@ export class CoupleService {
 
     const normalizedStart = this.normalizeDate(new Date(startDate));
     const events: SpecialEventSummary[] = [];
-    const referenceDays = Math.floor(
+    const referenceDaysZeroBased = Math.floor(
       (this.normalizeDate(referenceDate).getTime() - normalizedStart.getTime()) /
         this.msPerDay,
     );
-    const nextMilestoneIndex = Math.max(Math.floor(referenceDays / 100) + 1, 1);
+    const relationshipDayCount = Math.max(referenceDaysZeroBased + 1, 1);
+    const nextMilestoneIndex = Math.max(
+      Math.ceil(relationshipDayCount / 100),
+      1,
+    );
 
     for (let i = 0; i < 5; i += 1) {
       const milestoneDays = (nextMilestoneIndex + i) * 100;
       const targetDate = new Date(normalizedStart);
-      targetDate.setDate(targetDate.getDate() + milestoneDays);
+      // Day 1 = start date, so 100일 = start + 99 days.
+      targetDate.setDate(targetDate.getDate() + (milestoneDays - 1));
       const daysUntil = this.calculateDaysBetween(referenceDate, targetDate);
       if (daysUntil < 0) continue;
 
