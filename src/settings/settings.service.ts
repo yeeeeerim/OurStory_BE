@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import type { UpdateNotificationsDto } from './dto/update-notifications.dto';
 
@@ -7,14 +11,20 @@ export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSettings(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = (await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
         email: true,
         nickname: true,
-      },
-    });
+        themeColor: true,
+      } as any,
+    })) as {
+      id: string;
+      email: string;
+      nickname: string | null;
+      themeColor?: string;
+    } | null;
 
     const notifications = await this.ensureNotificationSettings(userId);
 
@@ -64,6 +74,23 @@ export class SettingsService {
       user,
       notifications,
       couple: coupleSummary,
+    };
+  }
+
+  async updateThemeColor(userId: string, themeColor: string) {
+    if (themeColor !== '#F5B5CF' && themeColor !== '#c3d0e0') {
+      throw new BadRequestException('Unsupported theme color');
+    }
+
+    return (this.prisma.user.update({
+      where: { id: userId },
+      data: { themeColor } as any,
+      select: { id: true, email: true, nickname: true, themeColor: true } as any,
+    }) as unknown) as {
+      id: string;
+      email: string;
+      nickname: string | null;
+      themeColor: string;
     };
   }
 
