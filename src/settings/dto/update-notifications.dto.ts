@@ -1,4 +1,4 @@
-export interface UpdateNotificationsDto {
+export class UpdateNotificationsDto {
   pushNotify?: boolean;
   anniversaryNotify?: boolean;
   diaryReminder?: boolean;

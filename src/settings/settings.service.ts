@@ -121,6 +121,24 @@ export class SettingsService {
     return settings;
   }
 
+  async updateProfile(userId: string, payload: { nickname?: string }) {
+    const nickname =
+      payload.nickname === undefined ? undefined : payload.nickname.trim();
+
+    return (this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(nickname !== undefined ? { nickname } : {}),
+      },
+      select: { id: true, email: true, nickname: true, themeColor: true } as any,
+    }) as unknown) as {
+      id: string;
+      email: string;
+      nickname: string | null;
+      themeColor?: string;
+    };
+  }
+
   private async ensureNotificationSettings(userId: string) {
     let existing: Awaited<
       ReturnType<typeof this.prisma.notificationSetting.findUnique>

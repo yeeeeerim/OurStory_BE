@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { SettingsService } from './settings.service';
 import type { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import type { UpdateThemeDto } from './dto/update-theme.dto';
+import type { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('settings')
 @UseGuards(AuthGuard('jwt'))
@@ -25,5 +26,10 @@ export class SettingsController {
   @Patch('theme')
   updateTheme(@Request() req, @Body() body: UpdateThemeDto) {
     return this.settingsService.updateThemeColor(req.user.userId, body.themeColor);
+  }
+
+  @Patch('profile')
+  updateProfile(@Request() req, @Body() body: UpdateProfileDto) {
+    return this.settingsService.updateProfile(req.user.userId, body);
   }
 }
