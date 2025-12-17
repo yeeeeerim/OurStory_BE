@@ -8,13 +8,13 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
+  id    String @id @default(uuid())
+  email String @unique
 
   /// 로컬 로그인만 쓰면 필수로 둬도 되지만,
   /// 소셜 로그인까지 고려하면 nullable 권장
-  password  String?
-  nickname  String?
+  password   String?
+  nickname   String?
   themeColor String  @default("#F5B5CF")
 
   createdAt DateTime @default(now())
@@ -28,20 +28,25 @@ model User {
   notificationSettings NotificationSetting?
 
   // created invites
-  createdInvites       CoupleInvite[] @relation("InviteCreator")
+  createdInvites CoupleInvite[] @relation("InviteCreator")
 
   // couple messages
-  coupleMessages       CoupleMessage[]
-  messageHistory       MessageHistory[]
+  coupleMessages CoupleMessage[]
+  messageHistory MessageHistory[]
 
   @@map("users")
 }
 
 model Couple {
-  id        String   @id @default(uuid())
-  startDate DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String       @id @default(uuid())
+  startDate   DateTime?
+  status      CoupleStatus @default(PENDING)
+  activatedAt DateTime?
+  deletedAt   DateTime?
+  maxMembers  Int          @default(2)
+  joinPolicy  JoinPolicy   @default(CLOSED)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   // Relations
   members         CoupleMember[]
@@ -50,9 +55,10 @@ model Couple {
   bucketlistItems BucketlistItem[]
   anniversaries   Anniversary[]
   placeMarkers    PlaceMarker[]
+  placeCategories PlaceCategory[]
 
   /// ✅ 초대코드 이력 관리 (재발급/만료/철회 등)
-  invites         CoupleInvite[]
+  invites CoupleInvite[]
 
   /// (선택) "현재 활성 초대"를 빠르게 찾고 싶다면 하이브리드로 유지 가능
   /// 활성 invite를 매번 조회하는 게 싫으면 아래 2줄을 사용:
@@ -60,8 +66,8 @@ model Couple {
   // currentInvite   CoupleInvite? @relation("CurrentInvite", fields: [currentInviteId], references: [id])
 
   /// ✅ 단방향 메시지 시스템
-  coupleMessages  CoupleMessage[]
-  messageHistory  MessageHistory[]
+  coupleMessages CoupleMessage[]
+  messageHistory MessageHistory[]
 
   @@map("couples")
 }
@@ -69,24 +75,25 @@ model Couple {
 /// ✅ 초대코드 엔티티 (핵심)
 /// - 1회용/다회용, 만료, 철회, 사용횟수, 생성자, 이력까지 모두 지원
 model CoupleInvite {
-  id        String            @id @default(uuid())
-  code      String            @unique
-  status    InviteStatus      @default(ACTIVE)
+  id     String       @id @default(uuid())
+  code   String       @unique
+  status InviteStatus @default(ACTIVE)
 
-  maxUses   Int               @default(1)
-  uses      Int               @default(0)
+  maxUses Int @default(1)
+  uses    Int @default(0)
 
-  expiresAt DateTime?
-  revokedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
   consumedAt DateTime?
 
-  createdAt DateTime          @default(now())
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
-  coupleId  String
-  couple    Couple            @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
   createdById String?
-  createdBy   User?           @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   /// 누가/언제 사용했는지 추적하고 싶으면 별도 테이블로 확장 가능(아래 참고)
   // inviteUsages CoupleInviteUsage[]
@@ -97,9 +104,10 @@ model CoupleInvite {
 }
 
 model CoupleMember {
-  id       String   @id @default(uuid())
-  joinedAt DateTime @default(now())
-  role     CoupleRole @default(OWNER)
+  id        String     @id @default(uuid())
+  joinedAt  DateTime   @default(now())
+  role      CoupleRole @default(OWNER)
+  deletedAt DateTime?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -182,28 +190,36 @@ model DiaryTag {
 }
 
 model PlaceCategory {
-  id   String  @id @default(uuid())
-  name String  @unique
-  icon String?
+  id        String    @id @default(uuid())
+  coupleId  String
+  couple    Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  name      String
+  color     String
+  icon      String?
+  systemKey String?
+  isSystem  Boolean   @default(false)
+  deletedAt DateTime?
 
-  places Place[]
+  markers PlaceMarker[]
 
   @@map("place_categories")
 }
 
 model Place {
-  id      String  @id @default(uuid())
-  name    String
-  lat     Float
-  lng     Float
-  address String?
-
-  categoryId    String?
-  placeCategory PlaceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  id               String           @id @default(uuid())
+  name             String
+  lat              Float
+  lng              Float
+  address          String?
+  externalProvider ExternalProvider @default(GOOGLE)
+  externalId       String?
+  normalizedName   String?
+  deletedAt        DateTime?
 
   diaries Diary[]
   markers PlaceMarker[]
 
+  @@unique([externalProvider, externalId])
   @@map("places")
 }
 
@@ -211,15 +227,19 @@ model PlaceMarker {
   id        String     @id @default(uuid())
   type      MarkerType
   createdAt DateTime   @default(now())
+  deletedAt DateTime?
 
   visitedAt DateTime?
 
   // ✅ 다이어리에서 생성된 방문 마커라면 연결
   diaryId String?
-  diary   Diary? @relation("DiaryPlaceMarkers", fields: [diaryId], references: [id], onDelete: SetNull)
+  diary   Diary?  @relation("DiaryPlaceMarkers", fields: [diaryId], references: [id], onDelete: SetNull)
 
   placeId String
   place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   PlaceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   /// ✅ 마커는 커플 소속 데이터면 non-null 강추
   coupleId String
@@ -227,16 +247,17 @@ model PlaceMarker {
 
   @@index([coupleId])
   @@index([placeId])
+  @@index([categoryId])
   @@map("place_markers")
 }
 
 model Anniversary {
-  id          String   @id @default(uuid())
+  id          String          @id @default(uuid())
   title       String
   date        DateTime
-  isRecurring Boolean  @default(true)
+  isRecurring Boolean         @default(true)
   type        AnniversaryType @default(CUSTOM)
-  createdAt   DateTime @default(now())
+  createdAt   DateTime        @default(now())
 
   coupleId String
   couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
@@ -350,6 +371,21 @@ enum InviteStatus {
   EXPIRED
 }
 
+enum CoupleStatus {
+  PENDING
+  ACTIVE
+  DISCONNECTED
+}
+
+enum JoinPolicy {
+  CLOSED
+  OPEN
+}
+
+enum ExternalProvider {
+  GOOGLE
+}
+
 enum AnniversaryType {
   CUSTOM
   RELATIONSHIP
@@ -361,14 +397,14 @@ enum AnniversaryType {
 /// - 각 사용자가 작성한 현재 메시지 (coupleId + authorId 유니크)
 /// - 내가 작성한 메시지는 상대방 대시보드에 표시
 model CoupleMessage {
-  id        String   @id @default(uuid())
-  content   String   // 최대 100자
+  id      String @id @default(uuid())
+  content String // 최대 100자
 
-  coupleId  String
-  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -381,14 +417,14 @@ model CoupleMessage {
 /// ✅ 메시지 이력
 /// - 메시지가 변경될 때마다 이력 저장
 model MessageHistory {
-  id        String   @id @default(uuid())
-  content   String
+  id      String @id @default(uuid())
+  content String
 
-  coupleId  String
-  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 

@@ -28,6 +28,11 @@ export class CoupleController {
     return this.coupleService.joinCouple(req.user.userId, code);
   }
 
+  @Post('cancel')
+  cancelPending(@Request() req) {
+    return this.coupleService.cancelPending(req.user.userId);
+  }
+
   @Delete()
   leave(@Request() req) {
     return this.coupleService.leaveCouple(req.user.userId);

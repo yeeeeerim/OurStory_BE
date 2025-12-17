@@ -7,6 +7,7 @@ import { CoupleModule } from './couple/couple.module';
 import { DiaryModule } from './diary/diary.module';
 import { MessagesModule } from './messages/messages.module';
 import { SettingsModule } from './settings/settings.module';
+import { PlacesModule } from './places/places.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SettingsModule } from './settings/settings.module';
     DiaryModule,
     MessagesModule,
     SettingsModule,
+    PlacesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

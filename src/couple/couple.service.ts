@@ -24,6 +24,8 @@ interface SpecialEventSummary {
 
 type AllowedAnniversaryType = Extract<AnniversaryType, 'RELATIONSHIP' | 'BIRTHDAY'>;
 
+type CoupleStatusValue = 'PENDING' | 'ACTIVE' | 'DISCONNECTED';
+
 @Injectable()
 export class CoupleService {
   private readonly msPerDay = 1000 * 60 * 60 * 24;
@@ -32,9 +34,10 @@ export class CoupleService {
 
   // 1. Create Couple (Owner)
   async createCouple(userId: string) {
+    const prisma = this.prisma as any;
     // Check if user already has a couple
-    const existing = await this.prisma.coupleMember.findFirst({
-      where: { userId },
+    const existing = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
     });
     if (existing) {
       throw new BadRequestException('User already belongs to a couple.');
@@ -44,10 +47,11 @@ export class CoupleService {
     const inviteCode = uuidv4().substring(0, 8).toUpperCase();
 
     // Transaction: Create Couple, Member (Owner), and Invite
-    return this.prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: any) => {
       const couple = await tx.couple.create({
         data: {
           startDate: null,
+          status: 'PENDING' satisfies CoupleStatusValue,
         },
       });
 
@@ -56,6 +60,17 @@ export class CoupleService {
           userId,
           coupleId: couple.id,
           role: 'OWNER',
+        },
+      });
+
+      // Create default system category for places ("Visited")
+      await tx.placeCategory.create({
+        data: {
+          coupleId: couple.id,
+          name: '방문한 곳',
+          color: '#F5B5CF',
+          systemKey: 'VISITED_DEFAULT',
+          isSystem: true,
         },
       });
 
@@ -76,16 +91,17 @@ export class CoupleService {
 
   // 2. Join Couple (Partner)
   async joinCouple(userId: string, code: string) {
+    const prisma = this.prisma as any;
     // 1. Check User
-    const existing = await this.prisma.coupleMember.findFirst({
-      where: { userId },
+    const existing = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
     });
     if (existing) {
       throw new BadRequestException('User already belongs to a couple.');
     }
 
     // 2. Find Invite (Active)
-    const invite = await this.prisma.coupleInvite.findUnique({
+    const invite = await prisma.coupleInvite.findUnique({
       where: { code },
       include: { couple: { include: { members: true } } },
     });
@@ -103,22 +119,49 @@ export class CoupleService {
     }
 
     const couple = invite.couple;
+    if ((couple as any).deletedAt) {
+      throw new BadRequestException('Invite code is expired or invalid.');
+    }
 
-    // Double check member count (though logic prevents >2 usually)
-    if (couple.members.length >= 2) {
+    const activeMembers = couple.members.filter(
+      (member: any) => member.deletedAt == null,
+    );
+    const maxMembers = (couple as any).maxMembers ?? 2;
+
+    if (activeMembers.length >= maxMembers) {
       throw new BadRequestException('This couple is already full.');
     }
 
-    // 3. Join (Transaction)
-    return this.prisma.$transaction(async (tx) => {
-      // Add Member
-      await tx.coupleMember.create({
-        data: {
-          userId,
-          coupleId: couple.id,
-          role: 'PARTNER',
-        },
+    // If DISCONNECTED, only allow rejoin for former members (no new partner yet)
+    if ((couple as any).status === ('DISCONNECTED' satisfies CoupleStatusValue)) {
+      const former = await prisma.coupleMember.findFirst({
+        where: { userId, coupleId: couple.id, deletedAt: { not: null } },
       });
+      if (!former) {
+        throw new BadRequestException('Join is not allowed for this couple.');
+      }
+    }
+
+    // 3. Join (Transaction)
+    return prisma.$transaction(async (tx: any) => {
+      const existingMember = await tx.coupleMember.findFirst({
+        where: { userId, coupleId: couple.id },
+      });
+
+      if (existingMember) {
+        await tx.coupleMember.update({
+          where: { id: existingMember.id },
+          data: { deletedAt: null },
+        });
+      } else {
+        await tx.coupleMember.create({
+          data: {
+            userId,
+            coupleId: couple.id,
+            role: 'PARTNER',
+          },
+        });
+      }
 
       // Update Invite Usage
       const newUses = invite.uses + 1;
@@ -133,16 +176,75 @@ export class CoupleService {
         },
       });
 
+      const activeCount = await tx.coupleMember.count({
+        where: { coupleId: couple.id, deletedAt: null },
+      });
+      if (activeCount >= maxMembers) {
+        await tx.couple.update({
+          where: { id: couple.id },
+          data: {
+            status: 'ACTIVE' satisfies CoupleStatusValue,
+            activatedAt: (couple as any).activatedAt ?? new Date(),
+          },
+        });
+      }
+
       return tx.couple.findUnique({
         where: { id: couple.id },
       });
     });
   }
 
+  async cancelPending(userId: string) {
+    const prisma = this.prisma as any;
+    const membership: any = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
+      include: { couple: true },
+    });
+
+    if (!membership) {
+      throw new BadRequestException('User is not in a couple.');
+    }
+
+    const couple: any = membership.couple;
+    if (couple.deletedAt) {
+      return { message: 'Already canceled.' };
+    }
+    if (couple.status !== ('PENDING' satisfies CoupleStatusValue)) {
+      throw new BadRequestException('Cancel is only allowed for pending couples.');
+    }
+
+    const activeCount = await prisma.coupleMember.count({
+      where: { coupleId: membership.coupleId, deletedAt: null },
+    });
+    if (activeCount !== 1) {
+      throw new BadRequestException('Cancel is only allowed for pending couples.');
+    }
+
+    const now = new Date();
+    await prisma.$transaction(async (tx: any) => {
+      await tx.couple.update({
+        where: { id: membership.coupleId },
+        data: { deletedAt: now },
+      });
+      await tx.coupleMember.update({
+        where: { id: membership.id },
+        data: { deletedAt: now },
+      });
+      await tx.coupleInvite.updateMany({
+        where: { coupleId: membership.coupleId, status: 'ACTIVE' },
+        data: { status: 'REVOKED', revokedAt: now, deletedAt: now } as any,
+      });
+    });
+
+    return { message: 'Couple canceled.' };
+  }
+
   // 4. Leave Couple
   async leaveCouple(userId: string) {
-    const membership = await this.prisma.coupleMember.findFirst({
-      where: { userId },
+    const prisma = this.prisma as any;
+    const membership: any = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
       include: { couple: { include: { members: true } } },
     });
 
@@ -150,29 +252,40 @@ export class CoupleService {
       throw new BadRequestException('User is not in a couple.');
     }
 
-    const { couple } = membership;
+    const couple: any = membership.couple;
 
-    // If Owner and waiting (alone), delete the whole couple
-    // We check members length.
-    if (couple.members.length === 1) {
-      // Delete entire couple (cascades to members/invites)
-      await this.prisma.couple.delete({ where: { id: couple.id } });
-      return { message: 'Couple deleted (was pending).' };
+    if (couple.deletedAt) {
+      return { message: 'Left the couple.' };
     }
 
-    // If 2 people, just leave? Or destroy couple?
-    // For now, simpler logic: If anyone leaves, destroy connection?
-    // Or standard: Leave -> membership deleted.
-    // Logic: if remaining member is 0, delete couple.
-    await this.prisma.coupleMember.delete({
+    const now = new Date();
+    const activeMembers = couple.members.filter(
+      (member: any) => member.deletedAt == null,
+    );
+    if (couple.status === ('PENDING' satisfies CoupleStatusValue) && activeMembers.length === 1) {
+      // Backwards compatible: leaving a pending couple cancels it
+      await this.cancelPending(userId);
+      return { message: 'Couple canceled (was pending).' };
+    }
+
+    await prisma.coupleMember.update({
       where: { id: membership.id },
+      data: { deletedAt: now },
     });
 
-    const remaining = await this.prisma.coupleMember.count({
-      where: { coupleId: couple.id },
+    const remainingActive = await prisma.coupleMember.count({
+      where: { coupleId: couple.id, deletedAt: null },
     });
-    if (remaining === 0) {
-      await this.prisma.couple.delete({ where: { id: couple.id } });
+    if (remainingActive === 0) {
+      await prisma.couple.update({
+        where: { id: couple.id },
+        data: { deletedAt: now },
+      });
+    } else if (remainingActive === 1) {
+      await prisma.couple.update({
+        where: { id: couple.id },
+        data: { status: 'DISCONNECTED' satisfies CoupleStatusValue },
+      });
     }
 
     return { message: 'Left the couple.' };
@@ -180,19 +293,21 @@ export class CoupleService {
 
   // 3. Get Status
   async getStatus(userId: string) {
-    const membership = await this.prisma.coupleMember.findFirst({
-      where: { userId },
+    const prisma = this.prisma as any;
+    const membership: any = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
       include: {
         couple: {
           include: {
             members: {
+              where: { deletedAt: null } as any,
               include: {
                 user: { select: { id: true, nickname: true, email: true } },
               },
             },
             // Include active invite for Waiting screen
             invites: {
-              where: { status: 'ACTIVE' },
+              where: { status: 'ACTIVE', deletedAt: null } as any,
               take: 1,
             },
           },
@@ -204,7 +319,10 @@ export class CoupleService {
       return { status: 'NONE' };
     }
 
-    const couple = membership.couple;
+    const couple: any = membership.couple;
+    if (couple.deletedAt) {
+      return { status: 'NONE' };
+    }
 
     // Inject inviteCode into response if exists
     const activeInvite = couple.invites?.[0];
@@ -213,11 +331,7 @@ export class CoupleService {
       inviteCode: activeInvite ? activeInvite.code : null,
     };
 
-    if (couple.members.length === 1) {
-      return { status: 'WAITING', couple: coupleWithInvite };
-    }
-
-    return { status: 'CONNECTED', couple: coupleWithInvite };
+    return { status: couple.status as CoupleStatusValue, couple: coupleWithInvite };
   }
 
   // 4. Get Dashboard (Home Page Data)
@@ -590,12 +704,17 @@ export class CoupleService {
   }
 
   private async ensureCoupleMembership(userId: string) {
-    const membership = await this.prisma.coupleMember.findFirst({
-      where: { userId },
+    const prisma = this.prisma as any;
+    const membership = await prisma.coupleMember.findFirst({
+      where: { userId, deletedAt: null },
       include: { couple: true },
     });
 
     if (!membership) {
+      throw new BadRequestException('User is not in a couple');
+    }
+
+    if ((membership as any).couple?.deletedAt) {
       throw new BadRequestException('User is not in a couple');
     }
 
