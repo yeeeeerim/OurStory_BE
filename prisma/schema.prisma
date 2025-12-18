@@ -33,6 +33,7 @@ model User {
   // couple messages
   coupleMessages CoupleMessage[]
   messageHistory MessageHistory[]
+  media          Media[]
 
   @@map("users")
 }
@@ -56,6 +57,7 @@ model Couple {
   anniversaries   Anniversary[]
   placeMarkers    PlaceMarker[]
   placeCategories PlaceCategory[]
+  placeLogs       PlaceLog[]
 
   /// ✅ 초대코드 이력 관리 (재발급/만료/철회 등)
   invites CoupleInvite[]
@@ -225,11 +227,9 @@ model Place {
 
 model PlaceMarker {
   id        String     @id @default(uuid())
-  type      MarkerType
   createdAt DateTime   @default(now())
   deletedAt DateTime?
-
-  visitedAt DateTime?
+  customTitle String?
 
   // ✅ 다이어리에서 생성된 방문 마커라면 연결
   diaryId String?
@@ -239,16 +239,63 @@ model PlaceMarker {
   place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   categoryId String
-  category   PlaceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category   PlaceCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   /// ✅ 마커는 커플 소속 데이터면 non-null 강추
   coupleId String
   couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
+  logs PlaceLog[]
+
   @@index([coupleId])
   @@index([placeId])
   @@index([categoryId])
+  @@unique([coupleId, placeId])
   @@map("place_markers")
+}
+
+model PlaceLog {
+  id        String   @id @default(uuid())
+  visitedAt DateTime
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  placeMarkerId String
+  placeMarker   PlaceMarker @relation(fields: [placeMarkerId], references: [id], onDelete: Restrict)
+
+  media Media[]
+
+  @@index([coupleId])
+  @@index([placeMarkerId])
+  @@index([visitedAt])
+  @@map("place_logs")
+}
+
+model Media {
+  id           String    @id @default(uuid())
+  type         MediaType
+  url          String
+  originalName String?
+  mimeType     String?
+  size         Int?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  uploadedById String
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  placeLogId String?
+  placeLog   PlaceLog? @relation(fields: [placeLogId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([uploadedById])
+  @@index([placeLogId])
+  @@map("media")
 }
 
 model Anniversary {
@@ -348,11 +395,6 @@ enum Visibility {
   PRIVATE
 }
 
-enum MarkerType {
-  VISITED
-  WISHLIST
-}
-
 enum TodoStatus {
   PENDING
   IN_PROGRESS
@@ -384,6 +426,11 @@ enum JoinPolicy {
 
 enum ExternalProvider {
   GOOGLE
+}
+
+enum MediaType {
+  DIARY
+  PLACE_LOG
 }
 
 enum AnniversaryType {

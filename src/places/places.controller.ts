@@ -13,9 +13,13 @@ export class PlacesController {
     return this.placesService.search(req.user.userId, q);
   }
 
+  @Get('nearby')
+  nearby(@Request() req, @Query('lat') lat: string, @Query('lng') lng: string) {
+    return this.placesService.nearby(req.user.userId, Number(lat), Number(lng));
+  }
+
   @Post('select')
   select(@Request() req, @Body() body: SelectPlaceDto) {
     return this.placesService.select(req.user.userId, body.placeId);
   }
 }
-

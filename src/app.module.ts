@@ -8,6 +8,8 @@ import { DiaryModule } from './diary/diary.module';
 import { MessagesModule } from './messages/messages.module';
 import { SettingsModule } from './settings/settings.module';
 import { PlacesModule } from './places/places.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { PlaceLogsModule } from './place-logs/place-logs.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PlacesModule } from './places/places.module';
     MessagesModule,
     SettingsModule,
     PlacesModule,
+    UploadsModule,
+    PlaceLogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
