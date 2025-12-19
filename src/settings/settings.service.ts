@@ -78,13 +78,14 @@ export class SettingsService {
   }
 
   async updateThemeColor(userId: string, themeColor: string) {
-    if (themeColor !== '#F5B5CF' && themeColor !== '#c3d0e0') {
-      throw new BadRequestException('Unsupported theme color');
+    const normalized = String(themeColor || '').trim().toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(normalized)) {
+      throw new BadRequestException('Invalid theme color');
     }
 
     return (this.prisma.user.update({
       where: { id: userId },
-      data: { themeColor } as any,
+      data: { themeColor: normalized } as any,
       select: { id: true, email: true, nickname: true, themeColor: true } as any,
     }) as unknown) as {
       id: string;

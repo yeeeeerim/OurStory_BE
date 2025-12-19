@@ -422,21 +422,8 @@ export class CoupleService {
       }),
     ]);
 
-    // Get todos (Top 3, today/this week)
-    const today = new Date();
-    const nextWeek = new Date(today.getTime() + 7 * this.msPerDay);
-    const todoSummary = await this.prisma.todo.findMany({
-      where: {
-        coupleId,
-        status: { not: 'DONE' },
-        OR: [{ dueDate: null }, { dueDate: { lte: nextWeek } }],
-      },
-      orderBy: { dueDate: 'asc' },
-      take: 3,
-      include: {
-        assignee: { select: { id: true, nickname: true } },
-      },
-    });
+    // TODO summary removed (ScheduleEvent(type=TASK) will replace this)
+    const todoSummary: any[] = [];
 
     // Get recent diaries (Latest 5)
     const recentDiaries = await this.prisma.diary.findMany({

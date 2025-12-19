@@ -23,7 +23,7 @@ model User {
   // Relations
   coupleMembers        CoupleMember[]
   diaries              Diary[]
-  todos                Todo[] // assigned todos
+  // legacy todos removed; use ScheduleEvent(type=TASK)
   notifications        Notification[]
   notificationSettings NotificationSetting?
 
@@ -35,6 +35,7 @@ model User {
   messageHistory MessageHistory[]
   media          Media[]
   diaryComments  DiaryComment[]
+  scheduleEvents ScheduleEvent[] @relation("UserCreatedScheduleEvents")
 
   @@map("users")
 }
@@ -53,7 +54,8 @@ model Couple {
   // Relations
   members         CoupleMember[]
   diaries         Diary[]
-  todos           Todo[]
+  scheduleEvents  ScheduleEvent[]
+  scheduleLabels  ScheduleLabel[]
   bucketlistItems BucketlistItem[]
   anniversaries   Anniversary[]
   placeMarkers    PlaceMarker[]
@@ -361,26 +363,6 @@ model Anniversary {
   @@map("anniversaries")
 }
 
-model Todo {
-  id          String     @id @default(uuid())
-  title       String
-  description String?
-  dueDate     DateTime?
-  status      TodoStatus @default(PENDING)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  coupleId String
-  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
-
-  assigneeId String?
-  assignee   User?   @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-
-  @@index([coupleId])
-  @@index([assigneeId])
-  @@map("todos")
-}
-
 model BucketlistItem {
   id          String    @id @default(uuid())
   title       String
@@ -443,10 +425,57 @@ enum Visibility {
   PRIVATE
 }
 
-enum TodoStatus {
+enum ScheduleEventType {
+  EVENT
+  TASK
+}
+
+enum ScheduleTaskStatus {
   PENDING
-  IN_PROGRESS
   DONE
+}
+
+model ScheduleLabel {
+  id        String   @id @default(uuid())
+  coupleId  String
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  name      String
+  color     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  events ScheduleEvent[]
+
+  @@index([coupleId])
+  @@map("schedule_labels")
+}
+
+model ScheduleEvent {
+  id         String            @id @default(uuid())
+  type       ScheduleEventType @default(EVENT)
+  title      String
+  note       String?
+  date       DateTime
+  allDay     Boolean           @default(true)
+  status     ScheduleTaskStatus @default(PENDING)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deletedAt  DateTime?
+
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("UserCreatedScheduleEvents", fields: [createdById], references: [id], onDelete: Cascade)
+
+  labelId String?
+  label   ScheduleLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
+
+  @@index([coupleId])
+  @@index([date])
+  @@index([labelId])
+  @@map("schedule_events")
 }
 
 enum CoupleRole {
