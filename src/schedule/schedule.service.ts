@@ -10,6 +10,24 @@ type UnifiedCalendarEvent = {
   meta?: Record<string, any>;
 };
 
+function normalizeAllDayToUtcNoon(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0, 0));
+}
+
+function parseAllDayDate(input: unknown) {
+  const raw = String(input ?? '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const date = new Date(Date.UTC(y, mo, d, 12, 0, 0, 0));
+    return date;
+  }
+  const parsed = new Date(raw);
+  return normalizeAllDayToUtcNoon(parsed);
+}
+
 @Injectable()
 export class ScheduleService {
   constructor(private readonly prisma: PrismaService) {}
@@ -83,7 +101,8 @@ export class ScheduleService {
   async createEvent(userId: string, body: any) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const date = new Date(body.date);
+    const allDay = body.allDay ?? true;
+    const date = allDay ? parseAllDayDate(body.date) : new Date(body.date);
     if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid date');
     const created = await prisma.scheduleEvent.create({
       data: {
@@ -93,7 +112,7 @@ export class ScheduleService {
         title: body.title.trim(),
         note: body.note?.trim() ? body.note.trim() : null,
         date,
-        allDay: body.allDay ?? true,
+        allDay,
         status: body.type === 'TASK' ? body.status ?? 'PENDING' : 'PENDING',
         labelId: body.labelId ?? null,
       },
@@ -113,12 +132,13 @@ export class ScheduleService {
     if (body.type !== undefined) data.type = body.type;
     if (body.title !== undefined) data.title = body.title.trim();
     if (body.note !== undefined) data.note = body.note?.trim() ? body.note.trim() : null;
-    if (body.date !== undefined) {
-      const date = new Date(body.date);
-      if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid date');
-      data.date = date;
-    }
     if (body.allDay !== undefined) data.allDay = Boolean(body.allDay);
+    if (body.date !== undefined) {
+      const nextAllDay = body.allDay !== undefined ? Boolean(body.allDay) : Boolean(existing.allDay);
+      const parsed = nextAllDay ? parseAllDayDate(body.date) : new Date(body.date);
+      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Invalid date');
+      data.date = parsed;
+    }
     if (body.status !== undefined) data.status = body.status;
     if (body.labelId !== undefined) data.labelId = body.labelId;
     const updated = await prisma.scheduleEvent.update({ where: { id }, data, include: { label: true } });
@@ -140,7 +160,7 @@ export class ScheduleService {
     const toY = rangeTo.getFullYear();
     for (const a of anniversaries) {
       if (!a.isRecurring) {
-        const d = new Date(a.date);
+        const d = normalizeAllDayToUtcNoon(new Date(a.date));
         if (d >= rangeFrom && d <= rangeTo) {
           result.push({
             type: 'ANNIVERSARY',
@@ -156,7 +176,7 @@ export class ScheduleService {
       // yearly recurring: generate occurrences in [fromY..toY]
       const base = new Date(a.date);
       for (let y = fromY; y <= toY; y++) {
-        const occ = new Date(y, base.getMonth(), base.getDate());
+        const occ = normalizeAllDayToUtcNoon(new Date(Date.UTC(y, base.getUTCMonth(), base.getUTCDate(), 12, 0, 0, 0)));
         if (occ >= rangeFrom && occ <= rangeTo) {
           result.push({
             type: 'ANNIVERSARY',
@@ -200,4 +220,3 @@ export class ScheduleService {
     return { data: { labels, events: [...scheduleEvents, ...anniversaryEvents] } };
   }
 }
-

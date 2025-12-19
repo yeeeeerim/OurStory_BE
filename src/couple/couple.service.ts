@@ -480,6 +480,18 @@ export class CoupleService {
     this.assertAllowedAnniversaryType(type);
     const isRecurring =
       type === AnniversaryType.BIRTHDAY ? dto.isRecurring ?? true : false;
+
+    if (type === AnniversaryType.RELATIONSHIP) {
+      const existingRelationship = await this.prisma.anniversary.findFirst({
+        where: { coupleId: membership.coupleId, type: AnniversaryType.RELATIONSHIP },
+      });
+      if (existingRelationship) {
+        throw new BadRequestException(
+          '사귄날(RELATIONSHIP)은 한 커플당 1개만 등록할 수 있어요. 기존 사귄날을 삭제 후 다시 등록해주세요.',
+        );
+      }
+    }
+
     const anniversary = await this.prisma.anniversary.create({
       data: {
         coupleId: membership.coupleId,
@@ -513,6 +525,21 @@ export class CoupleService {
 
     const nextType = dto.type ?? existing.type;
     this.assertAllowedAnniversaryType(nextType);
+
+    if (nextType === AnniversaryType.RELATIONSHIP) {
+      const existingRelationship = await this.prisma.anniversary.findFirst({
+        where: {
+          coupleId: membership.coupleId,
+          type: AnniversaryType.RELATIONSHIP,
+          NOT: { id: anniversaryId },
+        },
+      });
+      if (existingRelationship) {
+        throw new BadRequestException(
+          '사귄날(RELATIONSHIP)은 한 커플당 1개만 등록할 수 있어요. 다른 사귄날이 이미 등록되어 있어요.',
+        );
+      }
+    }
 
     const updated = await this.prisma.anniversary.update({
       where: { id: anniversaryId },
