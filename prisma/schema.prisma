@@ -34,6 +34,7 @@ model User {
   coupleMessages CoupleMessage[]
   messageHistory MessageHistory[]
   media          Media[]
+  diaryComments  DiaryComment[]
 
   @@map("users")
 }
@@ -132,6 +133,8 @@ model Diary {
   visibility  Visibility @default(BOTH)
   isScheduled Boolean    @default(false)
   scheduledAt DateTime?
+  deletedAt   DateTime?
+  coverImageId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,6 +152,10 @@ model Diary {
   images            DiaryImage[]
   diaryTags         DiaryTag[]
   bucketlistDiaries BucketlistDiary[]
+  places            DiaryPlace[]
+  comments          DiaryComment[]
+
+  coverImage DiaryImage? @relation("DiaryCoverImage", fields: [coverImageId], references: [id], onDelete: SetNull)
 
   // ✅ 이 다이어리에서 생성된 방문 마커들
   placeMarkers PlaceMarker[] @relation("DiaryPlaceMarkers")
@@ -163,12 +170,52 @@ model DiaryImage {
   url       String
   order     Int      @default(0)
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   diaryId String
   diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
 
+  coverForDiaries Diary[] @relation("DiaryCoverImage")
+
   @@index([diaryId])
   @@map("diary_images")
+}
+
+model DiaryPlace {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+
+  diaryId String
+  diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  order Int @default(0)
+
+  @@index([diaryId])
+  @@index([placeId])
+  @@unique([diaryId, placeId])
+  @@map("diary_places")
+}
+
+model DiaryComment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  diaryId String
+  diary   Diary  @relation(fields: [diaryId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([diaryId])
+  @@index([authorId])
+  @@map("diary_comments")
 }
 
 model Tag {
@@ -220,6 +267,7 @@ model Place {
 
   diaries Diary[]
   markers PlaceMarker[]
+  diaryPlaces DiaryPlace[]
 
   @@unique([externalProvider, externalId])
   @@map("places")
