@@ -478,8 +478,7 @@ export class CoupleService {
     const membership = await this.ensureCoupleMembership(userId);
     const type = dto.type ?? AnniversaryType.RELATIONSHIP;
     this.assertAllowedAnniversaryType(type);
-    const isRecurring =
-      type === AnniversaryType.BIRTHDAY ? dto.isRecurring ?? true : false;
+    const isRecurring = true; // 모든 기념일은 매년 반복
 
     if (type === AnniversaryType.RELATIONSHIP) {
       const existingRelationship = await this.prisma.anniversary.findFirst({
@@ -526,6 +525,13 @@ export class CoupleService {
     const nextType = dto.type ?? existing.type;
     this.assertAllowedAnniversaryType(nextType);
 
+    if (
+      existing.type === AnniversaryType.RELATIONSHIP &&
+      nextType !== AnniversaryType.RELATIONSHIP
+    ) {
+      throw new BadRequestException('사귄날은 유형을 변경할 수 없어요.');
+    }
+
     if (nextType === AnniversaryType.RELATIONSHIP) {
       const existingRelationship = await this.prisma.anniversary.findFirst({
         where: {
@@ -546,10 +552,7 @@ export class CoupleService {
       data: {
         title: dto.title ?? existing.title,
         date: dto.date ? new Date(dto.date) : existing.date,
-        isRecurring:
-          nextType === AnniversaryType.BIRTHDAY
-            ? dto.isRecurring ?? existing.isRecurring ?? true
-            : false,
+        isRecurring: true, // 모든 기념일은 반복 처리
         type: nextType,
       },
     });
@@ -574,11 +577,11 @@ export class CoupleService {
       throw new NotFoundException('Anniversary not found');
     }
 
-    await this.prisma.anniversary.delete({ where: { id: anniversaryId } });
-
     if (existing.type === AnniversaryType.RELATIONSHIP) {
-      await this.syncCoupleStartDate(membership.coupleId);
+      throw new BadRequestException('사귄날은 삭제할 수 없어요. 필요하면 수정만 가능합니다.');
     }
+
+    await this.prisma.anniversary.delete({ where: { id: anniversaryId } });
 
     return { success: true };
   }
