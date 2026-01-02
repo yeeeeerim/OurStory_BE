@@ -1,4 +1,11 @@
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateScheduleEventDto {
   @IsOptional()
@@ -31,4 +38,3 @@ export class UpdateScheduleEventDto {
   @IsString()
   labelId?: string | null;
 }
-

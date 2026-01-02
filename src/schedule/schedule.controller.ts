@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { CreateScheduleEventDto } from './dto/create-event.dto';
 import type { UpdateScheduleEventDto } from './dto/update-event.dto';
@@ -12,7 +23,11 @@ export class ScheduleController {
   constructor(private readonly service: ScheduleService) {}
 
   @Get('calendar')
-  calendar(@Request() req, @Query('from') from: string, @Query('to') to: string) {
+  calendar(
+    @Request() req,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
     const fromDate = new Date(from);
     const toDate = new Date(to);
     return this.service.getCalendar(req.user.userId, fromDate, toDate);
@@ -29,7 +44,11 @@ export class ScheduleController {
   }
 
   @Patch('schedule-labels/:id')
-  updateLabel(@Request() req, @Param('id') id: string, @Body() body: UpdateScheduleLabelDto) {
+  updateLabel(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: UpdateScheduleLabelDto,
+  ) {
     return this.service.updateLabel(req.user.userId, id, body);
   }
 
@@ -39,8 +58,16 @@ export class ScheduleController {
   }
 
   @Get('schedule-events')
-  listEvents(@Request() req, @Query('from') from: string, @Query('to') to: string) {
-    return this.service.listEvents(req.user.userId, new Date(from), new Date(to));
+  listEvents(
+    @Request() req,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.service.listEvents(
+      req.user.userId,
+      new Date(from),
+      new Date(to),
+    );
   }
 
   @Post('schedule-events')
@@ -49,7 +76,11 @@ export class ScheduleController {
   }
 
   @Patch('schedule-events/:id')
-  updateEvent(@Request() req, @Param('id') id: string, @Body() body: UpdateScheduleEventDto) {
+  updateEvent(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: UpdateScheduleEventDto,
+  ) {
     return this.service.updateEvent(req.user.userId, id, body);
   }
 
@@ -58,4 +89,3 @@ export class ScheduleController {
     return this.service.deleteEvent(req.user.userId, id);
   }
 }
-

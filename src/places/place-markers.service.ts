@@ -1,12 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PlacesService } from './places.service';
 
 type PlaceMarkerSummary = {
   id: string;
   customTitle: string | null;
-  category: { id: string; name: string; color: string; isSystem: boolean; systemKey?: string | null };
-  place: { id: string; name: string; address: string | null; lat: number; lng: number; externalId: string | null };
+  category: {
+    id: string;
+    name: string;
+    color: string;
+    isSystem: boolean;
+    systemKey?: string | null;
+  };
+  place: {
+    id: string;
+    name: string;
+    address: string | null;
+    lat: number;
+    lng: number;
+    externalId: string | null;
+  };
 };
 
 @Injectable()
@@ -28,15 +46,21 @@ export class PlaceMarkersService {
     return membership.coupleId;
   }
 
-  private parseBounds(bounds?: string): { west: number; south: number; east: number; north: number } | null {
+  private parseBounds(
+    bounds?: string,
+  ): { west: number; south: number; east: number; north: number } | null {
     if (!bounds) return null;
     const parts = bounds.split(',').map((value) => Number(value));
-    if (parts.length !== 4 || parts.some((value) => Number.isNaN(value))) return null;
+    if (parts.length !== 4 || parts.some((value) => Number.isNaN(value)))
+      return null;
     const [west, south, east, north] = parts;
     return { west, south, east, north };
   }
 
-  async list(userId: string, bounds?: string): Promise<{ data: PlaceMarkerSummary[] }> {
+  async list(
+    userId: string,
+    bounds?: string,
+  ): Promise<{ data: PlaceMarkerSummary[] }> {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
     const parsed = this.parseBounds(bounds);
@@ -56,7 +80,15 @@ export class PlaceMarkersService {
       where,
       include: {
         place: true,
-        category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            isSystem: true,
+            systemKey: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -90,18 +122,29 @@ export class PlaceMarkersService {
     const coupleId = await this.ensureCoupleId(userId);
 
     if (!body.placeId) throw new BadRequestException('placeId is required');
-    if (!body.categoryId) throw new BadRequestException('categoryId is required');
+    if (!body.categoryId)
+      throw new BadRequestException('categoryId is required');
 
     const category = await prisma.placeCategory.findFirst({
       where: { id: body.categoryId, coupleId, deletedAt: null },
-      select: { id: true, name: true, color: true, isSystem: true, systemKey: true },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        isSystem: true,
+        systemKey: true,
+      },
     });
     if (!category) throw new BadRequestException('Invalid category');
 
-    const place = await prisma.place.findFirst({ where: { id: body.placeId, deletedAt: null } });
+    const place = await prisma.place.findFirst({
+      where: { id: body.placeId, deletedAt: null },
+    });
     if (!place) throw new BadRequestException('Invalid place');
 
-    const customTitle = body.customTitle?.trim() ? body.customTitle.trim() : null;
+    const customTitle = body.customTitle?.trim()
+      ? body.customTitle.trim()
+      : null;
 
     const marker = await prisma.placeMarker.upsert({
       where: { coupleId_placeId: { coupleId, placeId: body.placeId } },
@@ -118,7 +161,15 @@ export class PlaceMarkersService {
       },
       include: {
         place: true,
-        category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            isSystem: true,
+            systemKey: true,
+          },
+        },
       },
     });
 
@@ -139,10 +190,18 @@ export class PlaceMarkersService {
 
   async saveByGoogle(
     userId: string,
-    body: { googlePlaceId: string; categoryId: string; customTitle?: string | null },
+    body: {
+      googlePlaceId: string;
+      categoryId: string;
+      customTitle?: string | null;
+    },
   ): Promise<PlaceMarkerSummary> {
-    if (!body.googlePlaceId) throw new BadRequestException('googlePlaceId is required');
-    const selected = await this.placesService.select(userId, body.googlePlaceId);
+    if (!body.googlePlaceId)
+      throw new BadRequestException('googlePlaceId is required');
+    const selected = await this.placesService.select(
+      userId,
+      body.googlePlaceId,
+    );
     const place = (selected as any).place as { id: string };
 
     const prisma = this.prisma as any;
@@ -154,14 +213,29 @@ export class PlaceMarkersService {
     });
     if (!category) throw new BadRequestException('Invalid category');
 
-    const customTitle = body.customTitle?.trim() ? body.customTitle.trim() : null;
+    const customTitle = body.customTitle?.trim()
+      ? body.customTitle.trim()
+      : null;
     const marker = await prisma.placeMarker.upsert({
       where: { coupleId_placeId: { coupleId, placeId: place.id } },
       update: { categoryId: body.categoryId, customTitle, deletedAt: null },
-      create: { coupleId, placeId: place.id, categoryId: body.categoryId, customTitle },
+      create: {
+        coupleId,
+        placeId: place.id,
+        categoryId: body.categoryId,
+        customTitle,
+      },
       include: {
         place: true,
-        category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            isSystem: true,
+            systemKey: true,
+          },
+        },
       },
     });
 
@@ -190,12 +264,26 @@ export class PlaceMarkersService {
 
     const existing = await prisma.placeMarker.findFirst({
       where: { id, coupleId, deletedAt: null },
-      include: { place: true, category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } } },
+      include: {
+        place: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            isSystem: true,
+            systemKey: true,
+          },
+        },
+      },
     });
     if (!existing) throw new NotFoundException('Marker not found');
 
     const data: Record<string, unknown> = {};
-    if (body.customTitle !== undefined) data.customTitle = body.customTitle?.trim() ? body.customTitle.trim() : null;
+    if (body.customTitle !== undefined)
+      data.customTitle = body.customTitle?.trim()
+        ? body.customTitle.trim()
+        : null;
     if (body.categoryId !== undefined) {
       const category = await prisma.placeCategory.findFirst({
         where: { id: body.categoryId, coupleId, deletedAt: null },
@@ -209,7 +297,15 @@ export class PlaceMarkersService {
       data,
       include: {
         place: true,
-        category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            isSystem: true,
+            systemKey: true,
+          },
+        },
       },
     });
 
@@ -228,10 +324,16 @@ export class PlaceMarkersService {
     };
   }
 
-  async remove(userId: string, id: string, force: boolean): Promise<{ ok: true }> {
+  async remove(
+    userId: string,
+    id: string,
+    force: boolean,
+  ): Promise<{ ok: true }> {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.placeMarker.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.placeMarker.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Marker not found');
     const logsCount = await prisma.placeLog.count({
       where: { coupleId, placeMarkerId: id, deletedAt: null },
@@ -254,8 +356,14 @@ export class PlaceMarkersService {
         });
         const logIds = logs.map((l: any) => l.id);
         if (logIds.length) {
-          await tx.placeLog.updateMany({ where: { id: { in: logIds } }, data: { deletedAt: now } });
-          await tx.media.updateMany({ where: { placeLogId: { in: logIds }, deletedAt: null }, data: { deletedAt: now } });
+          await tx.placeLog.updateMany({
+            where: { id: { in: logIds } },
+            data: { deletedAt: now },
+          });
+          await tx.media.updateMany({
+            where: { placeLogId: { in: logIds }, deletedAt: null },
+            data: { deletedAt: now },
+          });
         }
       }
     });

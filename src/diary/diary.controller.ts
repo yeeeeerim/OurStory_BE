@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { CreateDiaryDto } from './dto/create-diary.dto';
 import type { UpdateDiaryDto } from './dto/update-diary.dto';
@@ -25,7 +35,11 @@ export class DiaryController {
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() body: UpdateDiaryDto) {
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: UpdateDiaryDto,
+  ) {
     return this.diaryService.update(req.user.userId, id, body);
   }
 
@@ -40,8 +54,16 @@ export class DiaryController {
   }
 
   @Post(':id/comments')
-  addComment(@Request() req, @Param('id') id: string, @Body() body: { content: string }) {
-    return this.diaryService.addComment(req.user.userId, id, body?.content ?? '');
+  addComment(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: { content: string },
+  ) {
+    return this.diaryService.addComment(
+      req.user.userId,
+      id,
+      body?.content ?? '',
+    );
   }
 
   @Delete('comments/:commentId')

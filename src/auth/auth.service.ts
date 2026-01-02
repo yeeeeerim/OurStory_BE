@@ -27,7 +27,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         nickname: user.nickname,
-        themeColor: (user as any).themeColor ?? '#F5B5CF',
+        themeColor: user.themeColor ?? '#F5B5CF',
       },
     };
   }

@@ -11,6 +11,7 @@ import { PlacesModule } from './places/places.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { PlaceLogsModule } from './place-logs/place-logs.module';
 import { ScheduleModule } from './schedule/schedule.module';
+import { PushModule } from './push/push.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ScheduleModule } from './schedule/schedule.module';
     UploadsModule,
     PlaceLogsModule,
     ScheduleModule,
+    PushModule,
   ],
   controllers: [AppController],
   providers: [AppService],

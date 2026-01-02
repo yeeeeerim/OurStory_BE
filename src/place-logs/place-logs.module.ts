@@ -9,4 +9,3 @@ import { PlaceLogsService } from './place-logs.service';
   providers: [PlaceLogsService, PrismaService, PlacesService],
 })
 export class PlaceLogsModule {}
-

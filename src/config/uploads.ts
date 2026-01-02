@@ -3,4 +3,3 @@ export function getUploadRoot(): string {
   // Override via `UPLOAD_ROOT` to support other environments.
   return process.env.UPLOAD_ROOT || 'D:\\file\\OurStory';
 }
-

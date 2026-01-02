@@ -22,7 +22,10 @@ interface SpecialEventSummary {
   description?: string | null;
 }
 
-type AllowedAnniversaryType = Extract<AnniversaryType, 'RELATIONSHIP' | 'BIRTHDAY'>;
+type AllowedAnniversaryType = Extract<
+  AnniversaryType,
+  'RELATIONSHIP' | 'BIRTHDAY' | 'CUSTOM'
+>;
 
 type CoupleStatusValue = 'PENDING' | 'ACTIVE' | 'DISCONNECTED';
 
@@ -119,21 +122,21 @@ export class CoupleService {
     }
 
     const couple = invite.couple;
-    if ((couple as any).deletedAt) {
+    if (couple.deletedAt) {
       throw new BadRequestException('Invite code is expired or invalid.');
     }
 
     const activeMembers = couple.members.filter(
       (member: any) => member.deletedAt == null,
     );
-    const maxMembers = (couple as any).maxMembers ?? 2;
+    const maxMembers = couple.maxMembers ?? 2;
 
     if (activeMembers.length >= maxMembers) {
       throw new BadRequestException('This couple is already full.');
     }
 
     // If DISCONNECTED, only allow rejoin for former members (no new partner yet)
-    if ((couple as any).status === ('DISCONNECTED' satisfies CoupleStatusValue)) {
+    if (couple.status === ('DISCONNECTED' satisfies CoupleStatusValue)) {
       const former = await prisma.coupleMember.findFirst({
         where: { userId, coupleId: couple.id, deletedAt: { not: null } },
       });
@@ -184,7 +187,7 @@ export class CoupleService {
           where: { id: couple.id },
           data: {
             status: 'ACTIVE' satisfies CoupleStatusValue,
-            activatedAt: (couple as any).activatedAt ?? new Date(),
+            activatedAt: couple.activatedAt ?? new Date(),
           },
         });
       }
@@ -211,14 +214,18 @@ export class CoupleService {
       return { message: 'Already canceled.' };
     }
     if (couple.status !== ('PENDING' satisfies CoupleStatusValue)) {
-      throw new BadRequestException('Cancel is only allowed for pending couples.');
+      throw new BadRequestException(
+        'Cancel is only allowed for pending couples.',
+      );
     }
 
     const activeCount = await prisma.coupleMember.count({
       where: { coupleId: membership.coupleId, deletedAt: null },
     });
     if (activeCount !== 1) {
-      throw new BadRequestException('Cancel is only allowed for pending couples.');
+      throw new BadRequestException(
+        'Cancel is only allowed for pending couples.',
+      );
     }
 
     const now = new Date();
@@ -262,7 +269,10 @@ export class CoupleService {
     const activeMembers = couple.members.filter(
       (member: any) => member.deletedAt == null,
     );
-    if (couple.status === ('PENDING' satisfies CoupleStatusValue) && activeMembers.length === 1) {
+    if (
+      couple.status === ('PENDING' satisfies CoupleStatusValue) &&
+      activeMembers.length === 1
+    ) {
       // Backwards compatible: leaving a pending couple cancels it
       await this.cancelPending(userId);
       return { message: 'Couple canceled (was pending).' };
@@ -331,7 +341,10 @@ export class CoupleService {
       inviteCode: activeInvite ? activeInvite.code : null,
     };
 
-    return { status: couple.status as CoupleStatusValue, couple: coupleWithInvite };
+    return {
+      status: couple.status as CoupleStatusValue,
+      couple: coupleWithInvite,
+    };
   }
 
   // 4. Get Dashboard (Home Page Data)
@@ -347,7 +360,9 @@ export class CoupleService {
     });
 
     const relationshipAnniversary = anniversaries
-      .filter((anniversary) => anniversary.type === AnniversaryType.RELATIONSHIP)
+      .filter(
+        (anniversary) => anniversary.type === AnniversaryType.RELATIONSHIP,
+      )
       .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
 
     const relationshipStartDate = relationshipAnniversary
@@ -363,11 +378,13 @@ export class CoupleService {
           1,
         )
       : 0;
-    const birthdayAnniversaries = anniversaries.filter(
-      (anniversary) => anniversary.type === AnniversaryType.BIRTHDAY,
+    const displayAnniversaries = anniversaries.filter(
+      (anniversary) =>
+        anniversary.type === AnniversaryType.BIRTHDAY ||
+        anniversary.type === AnniversaryType.CUSTOM,
     );
     const computedAnniversaries = this.buildUpcomingAnniversaries(
-      birthdayAnniversaries,
+      displayAnniversaries,
       referenceDate,
     ).slice(0, 3);
     const milestoneEvents = this.buildMilestoneEvents(
@@ -384,7 +401,7 @@ export class CoupleService {
       title: anniversary.title,
       date: anniversary.date,
       isRecurring: anniversary.isRecurring,
-      type: anniversary.type as AnniversaryType,
+      type: anniversary.type,
       nextOccurrence: anniversary.nextOccurrence,
       daysUntil: anniversary.daysUntil,
     }));
@@ -393,7 +410,7 @@ export class CoupleService {
       computedAnniversaries.map((anniversary) => ({
         id: anniversary.id,
         title: anniversary.title,
-        type: anniversary.type as AnniversaryType,
+        type: anniversary.type,
         nextOccurrence: anniversary.nextOccurrence,
         daysUntil: anniversary.daysUntil,
       }));
@@ -402,6 +419,36 @@ export class CoupleService {
       [...anniversarySpecials, ...milestoneEvents, ...yearlyEvents].sort(
         (a, b) => a.nextOccurrence.getTime() - b.nextOccurrence.getTime(),
       )[0] ?? null;
+
+    let preferredSpecial: SpecialEventSummary | null = null;
+    let preferredId: string | null = null;
+    try {
+      const settings = await this.prisma.notificationSetting.findUnique({
+        where: { userId },
+        select: { dashboardAnniversaryId: true },
+      });
+      preferredId = (settings as any)?.dashboardAnniversaryId ?? null;
+    } catch (error: any) {
+      if (error?.code !== 'P2022') throw error;
+    }
+    if (preferredId) {
+      const preferred = anniversaries.find((a) => a.id === preferredId) ?? null;
+      if (preferred) {
+        const nextOccurrence = this.getNextAnniversaryOccurrence(
+          preferred,
+          referenceDate,
+        );
+        if (nextOccurrence) {
+          preferredSpecial = {
+            id: preferred.id,
+            title: preferred.title,
+            type: preferred.type,
+            nextOccurrence,
+            daysUntil: this.calculateDaysBetween(referenceDate, nextOccurrence),
+          };
+        }
+      }
+    }
 
     // Get messages (received = partner's message, my = my message)
     const [receivedMessage, myMessage] = await Promise.all([
@@ -441,14 +488,15 @@ export class CoupleService {
         daysCount,
         startDate: relationshipStartDate,
         upcomingAnniversaries,
-        nextSpecialEvent: nextSpecialCandidate
+        nextSpecialEvent: (preferredSpecial ?? nextSpecialCandidate)
           ? {
-              id: nextSpecialCandidate.id,
-              title: nextSpecialCandidate.title,
-              type: nextSpecialCandidate.type,
-              date: nextSpecialCandidate.nextOccurrence,
-              daysUntil: nextSpecialCandidate.daysUntil,
-              description: nextSpecialCandidate.description ?? null,
+              id: (preferredSpecial ?? nextSpecialCandidate)!.id,
+              title: (preferredSpecial ?? nextSpecialCandidate)!.title,
+              type: (preferredSpecial ?? nextSpecialCandidate)!.type,
+              date: (preferredSpecial ?? nextSpecialCandidate)!.nextOccurrence,
+              daysUntil: (preferredSpecial ?? nextSpecialCandidate)!.daysUntil,
+              description:
+                (preferredSpecial ?? nextSpecialCandidate)!.description ?? null,
             }
           : null,
       },
@@ -468,7 +516,13 @@ export class CoupleService {
     return this.prisma.anniversary.findMany({
       where: {
         coupleId: membership.coupleId,
-        type: { in: [AnniversaryType.RELATIONSHIP, AnniversaryType.BIRTHDAY] },
+        type: {
+          in: [
+            AnniversaryType.RELATIONSHIP,
+            AnniversaryType.BIRTHDAY,
+            AnniversaryType.CUSTOM,
+          ],
+        },
       },
       orderBy: { date: 'asc' },
     });
@@ -478,11 +532,14 @@ export class CoupleService {
     const membership = await this.ensureCoupleMembership(userId);
     const type = dto.type ?? AnniversaryType.RELATIONSHIP;
     this.assertAllowedAnniversaryType(type);
-    const isRecurring = true; // 모든 기념일은 매년 반복
+    const isRecurring = type === AnniversaryType.RELATIONSHIP ? false : true;
 
     if (type === AnniversaryType.RELATIONSHIP) {
       const existingRelationship = await this.prisma.anniversary.findFirst({
-        where: { coupleId: membership.coupleId, type: AnniversaryType.RELATIONSHIP },
+        where: {
+          coupleId: membership.coupleId,
+          type: AnniversaryType.RELATIONSHIP,
+        },
       });
       if (existingRelationship) {
         throw new BadRequestException(
@@ -552,7 +609,7 @@ export class CoupleService {
       data: {
         title: dto.title ?? existing.title,
         date: dto.date ? new Date(dto.date) : existing.date,
-        isRecurring: true, // 모든 기념일은 반복 처리
+        isRecurring: nextType === AnniversaryType.RELATIONSHIP ? false : true,
         type: nextType,
       },
     });
@@ -656,7 +713,8 @@ export class CoupleService {
     const normalizedStart = this.normalizeDate(new Date(startDate));
     const events: SpecialEventSummary[] = [];
     const referenceDaysZeroBased = Math.floor(
-      (this.normalizeDate(referenceDate).getTime() - normalizedStart.getTime()) /
+      (this.normalizeDate(referenceDate).getTime() -
+        normalizedStart.getTime()) /
         this.msPerDay,
     );
     const relationshipDayCount = Math.max(referenceDaysZeroBased + 1, 1);
@@ -731,7 +789,7 @@ export class CoupleService {
       throw new BadRequestException('User is not in a couple');
     }
 
-    if ((membership as any).couple?.deletedAt) {
+    if (membership.couple?.deletedAt) {
       throw new BadRequestException('User is not in a couple');
     }
 
@@ -747,7 +805,9 @@ export class CoupleService {
     await this.prisma.couple.update({
       where: { id: coupleId },
       data: {
-        startDate: relationshipAnniversary ? relationshipAnniversary.date : null,
+        startDate: relationshipAnniversary
+          ? relationshipAnniversary.date
+          : null,
       },
     });
   }
@@ -757,7 +817,8 @@ export class CoupleService {
   ): asserts type is AllowedAnniversaryType {
     if (
       type !== AnniversaryType.RELATIONSHIP &&
-      type !== AnniversaryType.BIRTHDAY
+      type !== AnniversaryType.BIRTHDAY &&
+      type !== AnniversaryType.CUSTOM
     ) {
       throw new BadRequestException('Unsupported anniversary type');
     }

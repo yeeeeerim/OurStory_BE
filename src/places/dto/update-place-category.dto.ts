@@ -14,4 +14,3 @@ export class UpdatePlaceCategoryDto {
   @IsString()
   icon?: string | null;
 }
-

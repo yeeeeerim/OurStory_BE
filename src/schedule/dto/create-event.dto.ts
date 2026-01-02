@@ -1,4 +1,11 @@
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateScheduleEventDto {
   @IsIn(['EVENT', 'TASK'])
@@ -28,4 +35,3 @@ export class CreateScheduleEventDto {
   @IsString()
   labelId?: string | null;
 }
-

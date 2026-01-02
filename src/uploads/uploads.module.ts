@@ -8,4 +8,3 @@ import { UploadsService } from './uploads.service';
   providers: [UploadsService, PrismaService],
 })
 export class UploadsModule {}
-

@@ -9,4 +9,3 @@ export class CreateScheduleLabelDto {
   @IsHexColor()
   color!: string;
 }
-

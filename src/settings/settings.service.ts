@@ -78,16 +78,23 @@ export class SettingsService {
   }
 
   async updateThemeColor(userId: string, themeColor: string) {
-    const normalized = String(themeColor || '').trim().toUpperCase();
+    const normalized = String(themeColor || '')
+      .trim()
+      .toUpperCase();
     if (!/^#[0-9A-F]{6}$/.test(normalized)) {
       throw new BadRequestException('Invalid theme color');
     }
 
-    return (this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id: userId },
       data: { themeColor: normalized } as any,
-      select: { id: true, email: true, nickname: true, themeColor: true } as any,
-    }) as unknown) as {
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        themeColor: true,
+      } as any,
+    }) as unknown as {
       id: string;
       email: string;
       nickname: string | null;
@@ -105,7 +112,10 @@ export class SettingsService {
       data.anniversaryNotify = payload.anniversaryNotify;
     if (payload.diaryReminder !== undefined)
       data.diaryReminder = payload.diaryReminder;
-    if (payload.emailNotify !== undefined) data.emailNotify = payload.emailNotify;
+    if (payload.emailNotify !== undefined)
+      data.emailNotify = payload.emailNotify;
+    if (payload.dashboardAnniversaryId !== undefined)
+      data.dashboardAnniversaryId = payload.dashboardAnniversaryId;
 
     const settings = await this.prisma.notificationSetting.upsert({
       where: { userId },
@@ -116,6 +126,7 @@ export class SettingsService {
         anniversaryNotify: payload.anniversaryNotify ?? true,
         diaryReminder: payload.diaryReminder ?? true,
         emailNotify: payload.emailNotify ?? false,
+        dashboardAnniversaryId: payload.dashboardAnniversaryId ?? null,
       },
     });
 
@@ -126,13 +137,18 @@ export class SettingsService {
     const nickname =
       payload.nickname === undefined ? undefined : payload.nickname.trim();
 
-    return (this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(nickname !== undefined ? { nickname } : {}),
       },
-      select: { id: true, email: true, nickname: true, themeColor: true } as any,
-    }) as unknown) as {
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        themeColor: true,
+      } as any,
+    }) as unknown as {
       id: string;
       email: string;
       nickname: string | null;

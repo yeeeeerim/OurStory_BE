@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PlacesService } from '../places/places.service';
 
@@ -21,9 +25,17 @@ export class PlaceLogsService {
     return membership.coupleId;
   }
 
-  private async getDefaultCategoryId(tx: any, coupleId: string): Promise<string> {
+  private async getDefaultCategoryId(
+    tx: any,
+    coupleId: string,
+  ): Promise<string> {
     const existing = await tx.placeCategory.findFirst({
-      where: { coupleId, deletedAt: null, isSystem: true, systemKey: 'VISITED_DEFAULT' },
+      where: {
+        coupleId,
+        deletedAt: null,
+        isSystem: true,
+        systemKey: 'VISITED_DEFAULT',
+      },
       select: { id: true },
     });
     if (existing) return existing.id;
@@ -42,16 +54,27 @@ export class PlaceLogsService {
 
   async create(
     userId: string,
-    body: { googlePlaceId: string; visitedAt: string; note?: string; categoryId?: string; mediaIds?: string[] },
+    body: {
+      googlePlaceId: string;
+      visitedAt: string;
+      note?: string;
+      categoryId?: string;
+      mediaIds?: string[];
+    },
   ) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
     const visitedAt = new Date(body.visitedAt);
-    if (Number.isNaN(visitedAt.getTime())) throw new BadRequestException('Invalid visitedAt');
-    if (!body.googlePlaceId) throw new BadRequestException('googlePlaceId is required');
+    if (Number.isNaN(visitedAt.getTime()))
+      throw new BadRequestException('Invalid visitedAt');
+    if (!body.googlePlaceId)
+      throw new BadRequestException('googlePlaceId is required');
 
     // 1) Ensure Place is upserted from Google (canonical name/address/coords)
-    const selected = await this.placesService.select(userId, body.googlePlaceId);
+    const selected = await this.placesService.select(
+      userId,
+      body.googlePlaceId,
+    );
     const place = (selected as any).place as { id: string };
 
     return prisma.$transaction(async (tx: any) => {
@@ -76,7 +99,10 @@ export class PlaceLogsService {
 
       // If marker already existed, keep its category unless client explicitly set one.
       if (body.categoryId) {
-        await tx.placeMarker.update({ where: { id: marker.id }, data: { categoryId } });
+        await tx.placeMarker.update({
+          where: { id: marker.id },
+          data: { categoryId },
+        });
       }
 
       // 3) Create place log
@@ -117,7 +143,15 @@ export class PlaceLogsService {
         placeMarker: {
           include: {
             place: true,
-            category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+            category: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                isSystem: true,
+                systemKey: true,
+              },
+            },
           },
         },
         media: {
@@ -153,7 +187,8 @@ export class PlaceLogsService {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
-    const safeSize = Number.isFinite(size) && size > 0 && size <= 50 ? size : 20;
+    const safeSize =
+      Number.isFinite(size) && size > 0 && size <= 50 ? size : 20;
     const skip = (safePage - 1) * safeSize;
 
     const [total, rows] = await prisma.$transaction([
@@ -167,10 +202,23 @@ export class PlaceLogsService {
           placeMarker: {
             include: {
               place: true,
-              category: { select: { id: true, name: true, color: true, isSystem: true, systemKey: true } },
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                  isSystem: true,
+                  systemKey: true,
+                },
+              },
             },
           },
-          media: { where: { deletedAt: null }, select: { id: true, url: true, type: true }, take: 1, orderBy: { createdAt: 'asc' } },
+          media: {
+            where: { deletedAt: null },
+            select: { id: true, url: true, type: true },
+            take: 1,
+            orderBy: { createdAt: 'asc' },
+          },
         },
       }),
     ]);
@@ -206,13 +254,21 @@ export class PlaceLogsService {
   async listByMarker(userId: string, placeMarkerId: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const marker = await prisma.placeMarker.findFirst({ where: { id: placeMarkerId, coupleId, deletedAt: null } });
+    const marker = await prisma.placeMarker.findFirst({
+      where: { id: placeMarkerId, coupleId, deletedAt: null },
+    });
     if (!marker) throw new NotFoundException('Marker not found');
 
     const logs = await prisma.placeLog.findMany({
       where: { coupleId, placeMarkerId, deletedAt: null },
       orderBy: { visitedAt: 'desc' },
-      include: { media: { where: { deletedAt: null }, select: { id: true, url: true, type: true }, orderBy: { createdAt: 'asc' } } },
+      include: {
+        media: {
+          where: { deletedAt: null },
+          select: { id: true, url: true, type: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     return {
@@ -225,4 +281,3 @@ export class PlaceLogsService {
     };
   }
 }
-

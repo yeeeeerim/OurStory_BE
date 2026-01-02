@@ -8,8 +8,17 @@ import { PlacesController } from './places.controller';
 import { PlacesService } from './places.service';
 
 @Module({
-  controllers: [PlacesController, PlaceCategoriesController, PlaceMarkersController],
-  providers: [PlacesService, PlaceCategoriesService, PlaceMarkersService, PrismaService],
+  controllers: [
+    PlacesController,
+    PlaceCategoriesController,
+    PlaceMarkersController,
+  ],
+  providers: [
+    PlacesService,
+    PlaceCategoriesService,
+    PlaceMarkersService,
+    PrismaService,
+  ],
   exports: [PlacesService],
 })
 export class PlacesModule {}

@@ -64,7 +64,9 @@ export class PlacesService {
     if (!query || query.trim().length < 2) return { results: [] };
 
     const key = this.getApiKey();
-    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+    const url = new URL(
+      'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+    );
     url.searchParams.set('input', query.trim());
     url.searchParams.set('key', key);
     url.searchParams.set('language', 'ko');
@@ -72,14 +74,19 @@ export class PlacesService {
     const response = await fetch(url.toString());
     const payload = (await response.json()) as GoogleAutocompleteResponse;
     if (!response.ok || payload.status !== 'OK') {
-      throw new BadRequestException(payload.error_message || 'Google Places error');
+      throw new BadRequestException(
+        payload.error_message || 'Google Places error',
+      );
     }
 
     const results =
       payload.predictions?.map((prediction) => ({
         placeId: prediction.place_id,
-        title: prediction.structured_formatting?.main_text || prediction.description,
-        subtitle: prediction.structured_formatting?.secondary_text || prediction.description,
+        title:
+          prediction.structured_formatting?.main_text || prediction.description,
+        subtitle:
+          prediction.structured_formatting?.secondary_text ||
+          prediction.description,
       })) ?? [];
 
     return { results };
@@ -92,7 +99,9 @@ export class PlacesService {
     }
 
     const key = this.getApiKey();
-    const url = new URL('https://maps.googleapis.com/maps/api/place/nearbysearch/json');
+    const url = new URL(
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+    );
     url.searchParams.set('location', `${lat},${lng}`);
     url.searchParams.set('radius', '250'); // meters
     url.searchParams.set('key', key);
@@ -100,8 +109,13 @@ export class PlacesService {
 
     const response = await fetch(url.toString());
     const payload = (await response.json()) as GoogleNearbySearchResponse;
-    if (!response.ok || (payload.status !== 'OK' && payload.status !== 'ZERO_RESULTS')) {
-      throw new BadRequestException(payload.error_message || 'Google Places error');
+    if (
+      !response.ok ||
+      (payload.status !== 'OK' && payload.status !== 'ZERO_RESULTS')
+    ) {
+      throw new BadRequestException(
+        payload.error_message || 'Google Places error',
+      );
     }
 
     const results =
@@ -120,7 +134,9 @@ export class PlacesService {
     if (!placeId) throw new BadRequestException('placeId is required');
 
     const key = this.getApiKey();
-    const url = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+    const url = new URL(
+      'https://maps.googleapis.com/maps/api/place/details/json',
+    );
     url.searchParams.set('place_id', placeId);
     url.searchParams.set('key', key);
     url.searchParams.set('language', 'ko');
@@ -164,10 +180,16 @@ export class PlacesService {
       return { coupleId, place };
     } catch {
       const place = await prisma.place.findFirst({
-        where: { externalProvider: 'GOOGLE', externalId: placeId, deletedAt: null },
+        where: {
+          externalProvider: 'GOOGLE',
+          externalId: placeId,
+          deletedAt: null,
+        },
       });
       if (!place) {
-        throw new BadRequestException('Unable to load place details. Try again.');
+        throw new BadRequestException(
+          'Unable to load place details. Try again.',
+        );
       }
       return { coupleId, place };
     }

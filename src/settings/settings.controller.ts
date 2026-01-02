@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Patch, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { SettingsService } from './settings.service';
 import type { UpdateNotificationsDto } from './dto/update-notifications.dto';
@@ -25,7 +32,10 @@ export class SettingsController {
 
   @Patch('theme')
   updateTheme(@Request() req, @Body() body: UpdateThemeDto) {
-    return this.settingsService.updateThemeColor(req.user.userId, body.themeColor);
+    return this.settingsService.updateThemeColor(
+      req.user.userId,
+      body.themeColor,
+    );
   }
 
   @Patch('profile')

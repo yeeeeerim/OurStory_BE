@@ -1,4 +1,13 @@
-import { BadRequestException, Body, Controller, Post, Request, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Request,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadsService } from './uploads.service';
@@ -16,7 +25,11 @@ export class UploadsController {
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  async upload(@Request() req, @Body() body: { type?: string }, @UploadedFile() file?: any) {
+  async upload(
+    @Request() req,
+    @Body() body: { type?: string },
+    @UploadedFile() file?: any,
+  ) {
     if (!file) {
       throw new BadRequestException('file is required');
     }

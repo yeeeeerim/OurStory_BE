@@ -1,5 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { PushService } from '../push/push.service';
 
 type UnifiedCalendarEvent = {
   type: 'SCHEDULE' | 'ANNIVERSARY';
@@ -11,7 +17,17 @@ type UnifiedCalendarEvent = {
 };
 
 function normalizeAllDayToUtcNoon(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0, 0));
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      12,
+      0,
+      0,
+      0,
+    ),
+  );
 }
 
 function parseAllDayDate(input: unknown) {
@@ -30,7 +46,10 @@ function parseAllDayDate(input: unknown) {
 
 @Injectable()
 export class ScheduleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushService: PushService,
+  ) {}
 
   private async ensureCoupleId(userId: string): Promise<string> {
     const prisma = this.prisma as any;
@@ -63,10 +82,16 @@ export class ScheduleService {
     return { data: created };
   }
 
-  async updateLabel(userId: string, id: string, body: { name?: string; color?: string }) {
+  async updateLabel(
+    userId: string,
+    id: string,
+    body: { name?: string; color?: string },
+  ) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.scheduleLabel.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.scheduleLabel.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Label not found');
     const updated = await prisma.scheduleLabel.update({
       where: { id },
@@ -81,9 +106,14 @@ export class ScheduleService {
   async deleteLabel(userId: string, id: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.scheduleLabel.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.scheduleLabel.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Label not found');
-    await prisma.scheduleLabel.update({ where: { id }, data: { deletedAt: new Date() } });
+    await prisma.scheduleLabel.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -103,7 +133,8 @@ export class ScheduleService {
     const coupleId = await this.ensureCoupleId(userId);
     const allDay = body.allDay ?? true;
     const date = allDay ? parseAllDayDate(body.date) : new Date(body.date);
-    if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid date');
+    if (Number.isNaN(date.getTime()))
+      throw new BadRequestException('Invalid date');
     const created = await prisma.scheduleEvent.create({
       data: {
         coupleId,
@@ -113,10 +144,17 @@ export class ScheduleService {
         note: body.note?.trim() ? body.note.trim() : null,
         date,
         allDay,
-        status: body.type === 'TASK' ? body.status ?? 'PENDING' : 'PENDING',
+        status: body.type === 'TASK' ? (body.status ?? 'PENDING') : 'PENDING',
         labelId: body.labelId ?? null,
       },
       include: { label: true },
+    });
+
+    await this.pushService.sendToCoupleExcept(coupleId, userId, {
+      title: created.type === 'TASK' ? '새 할 일' : '새 일정',
+      body: created.title,
+      url: '/schedule',
+      tag: `schedule:${created.id}`,
     });
     return { data: created };
   }
@@ -124,37 +162,61 @@ export class ScheduleService {
   async updateEvent(userId: string, id: string, body: any) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.scheduleEvent.findFirst({ where: { id, coupleId, deletedAt: null }, include: { label: true } });
+    const existing = await prisma.scheduleEvent.findFirst({
+      where: { id, coupleId, deletedAt: null },
+      include: { label: true },
+    });
     if (!existing) throw new NotFoundException('Event not found');
     // Allow edits by any couple member for now; adjust later if needed.
-    if (existing.coupleId !== coupleId) throw new ForbiddenException('Forbidden');
+    if (existing.coupleId !== coupleId)
+      throw new ForbiddenException('Forbidden');
     const data: any = {};
     if (body.type !== undefined) data.type = body.type;
     if (body.title !== undefined) data.title = body.title.trim();
-    if (body.note !== undefined) data.note = body.note?.trim() ? body.note.trim() : null;
+    if (body.note !== undefined)
+      data.note = body.note?.trim() ? body.note.trim() : null;
     if (body.allDay !== undefined) data.allDay = Boolean(body.allDay);
     if (body.date !== undefined) {
-      const nextAllDay = body.allDay !== undefined ? Boolean(body.allDay) : Boolean(existing.allDay);
-      const parsed = nextAllDay ? parseAllDayDate(body.date) : new Date(body.date);
-      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Invalid date');
+      const nextAllDay =
+        body.allDay !== undefined
+          ? Boolean(body.allDay)
+          : Boolean(existing.allDay);
+      const parsed = nextAllDay
+        ? parseAllDayDate(body.date)
+        : new Date(body.date);
+      if (Number.isNaN(parsed.getTime()))
+        throw new BadRequestException('Invalid date');
       data.date = parsed;
     }
     if (body.status !== undefined) data.status = body.status;
     if (body.labelId !== undefined) data.labelId = body.labelId;
-    const updated = await prisma.scheduleEvent.update({ where: { id }, data, include: { label: true } });
+    const updated = await prisma.scheduleEvent.update({
+      where: { id },
+      data,
+      include: { label: true },
+    });
     return { data: updated };
   }
 
   async deleteEvent(userId: string, id: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.scheduleEvent.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.scheduleEvent.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Event not found');
-    await prisma.scheduleEvent.update({ where: { id }, data: { deletedAt: new Date() } });
+    await prisma.scheduleEvent.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 
-  private expandAnniversaries(rangeFrom: Date, rangeTo: Date, anniversaries: any[]): UnifiedCalendarEvent[] {
+  private expandAnniversaries(
+    rangeFrom: Date,
+    rangeTo: Date,
+    anniversaries: any[],
+  ): UnifiedCalendarEvent[] {
     const result: UnifiedCalendarEvent[] = [];
     const fromY = rangeFrom.getFullYear();
     const toY = rangeTo.getFullYear();
@@ -176,7 +238,11 @@ export class ScheduleService {
       // yearly recurring: generate occurrences in [fromY..toY]
       const base = new Date(a.date);
       for (let y = fromY; y <= toY; y++) {
-        const occ = normalizeAllDayToUtcNoon(new Date(Date.UTC(y, base.getUTCMonth(), base.getUTCDate(), 12, 0, 0, 0)));
+        const occ = normalizeAllDayToUtcNoon(
+          new Date(
+            Date.UTC(y, base.getUTCMonth(), base.getUTCDate(), 12, 0, 0, 0),
+          ),
+        );
         if (occ >= rangeFrom && occ <= rangeTo) {
           result.push({
             type: 'ANNIVERSARY',
@@ -197,13 +263,19 @@ export class ScheduleService {
     const coupleId = await this.ensureCoupleId(userId);
 
     const [labels, events, anniversaries] = await Promise.all([
-      prisma.scheduleLabel.findMany({ where: { coupleId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
+      prisma.scheduleLabel.findMany({
+        where: { coupleId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
       prisma.scheduleEvent.findMany({
         where: { coupleId, deletedAt: null, date: { gte: from, lte: to } },
         include: { label: true },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       }),
-      prisma.anniversary.findMany({ where: { coupleId }, orderBy: { date: 'asc' } }),
+      prisma.anniversary.findMany({
+        where: { coupleId },
+        orderBy: { date: 'asc' },
+      }),
     ]);
 
     const scheduleEvents: UnifiedCalendarEvent[] = events.map((e: any) => ({
@@ -212,11 +284,18 @@ export class ScheduleService {
       date: e.date.toISOString(),
       title: e.title,
       color: e.label?.color ?? '#F5B5CF',
-      meta: { scheduleType: e.type, status: e.status, labelId: e.labelId ?? null, allDay: e.allDay },
+      meta: {
+        scheduleType: e.type,
+        status: e.status,
+        labelId: e.labelId ?? null,
+        allDay: e.allDay,
+      },
     }));
 
     const anniversaryEvents = this.expandAnniversaries(from, to, anniversaries);
 
-    return { data: { labels, events: [...scheduleEvents, ...anniversaryEvents] } };
+    return {
+      data: { labels, events: [...scheduleEvents, ...anniversaryEvents] },
+    };
   }
 }

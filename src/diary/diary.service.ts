@@ -1,6 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PlacesService } from '../places/places.service';
+import { PushService } from '../push/push.service';
 import type { CreateDiaryDto } from './dto/create-diary.dto';
 import type { UpdateDiaryDto } from './dto/update-diary.dto';
 
@@ -15,8 +21,22 @@ type DiarySummary = {
   isScheduled: boolean;
   scheduledAt: Date | null;
   authorId: string;
-  place: { id: string; name: string; address: string | null; lat: number; lng: number; externalId: string | null } | null;
-  places: Array<{ id: string; name: string; address: string | null; lat: number; lng: number; externalId: string | null }>;
+  place: {
+    id: string;
+    name: string;
+    address: string | null;
+    lat: number;
+    lng: number;
+    externalId: string | null;
+  } | null;
+  places: Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    lat: number;
+    lng: number;
+    externalId: string | null;
+  }>;
   tags: string[];
   images: Array<{ id: string; url: string; order: number }>;
   coverImageUrl: string | null;
@@ -30,6 +50,7 @@ export class DiaryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly placesService: PlacesService,
+    private readonly pushService: PushService,
   ) {}
 
   private async ensureCoupleId(userId: string): Promise<string> {
@@ -44,9 +65,17 @@ export class DiaryService {
     return membership.coupleId;
   }
 
-  private async getDefaultCategoryId(tx: any, coupleId: string): Promise<string> {
+  private async getDefaultCategoryId(
+    tx: any,
+    coupleId: string,
+  ): Promise<string> {
     const existing = await tx.placeCategory.findFirst({
-      where: { coupleId, deletedAt: null, isSystem: true, systemKey: 'VISITED_DEFAULT' },
+      where: {
+        coupleId,
+        deletedAt: null,
+        isSystem: true,
+        systemKey: 'VISITED_DEFAULT',
+      },
       select: { id: true },
     });
     if (existing) return existing.id;
@@ -67,15 +96,16 @@ export class DiaryService {
     if (diary.deletedAt) return false;
     if (diary.authorId === userId) return true;
     if (diary.visibility !== 'BOTH') return false;
-    if (diary.isScheduled && diary.scheduledAt && now < diary.scheduledAt) return false;
+    if (diary.isScheduled && diary.scheduledAt && now < diary.scheduledAt)
+      return false;
     return true;
   }
 
   private mapDiary(diary: any): DiarySummary {
     const images = (diary.images ?? []).filter((img: any) => !img.deletedAt);
     const cover = diary.coverImageId
-      ? images.find((i: any) => i.id === diary.coverImageId) ?? null
-      : images[0] ?? null;
+      ? (images.find((i: any) => i.id === diary.coverImageId) ?? null)
+      : (images[0] ?? null);
     return {
       id: diary.id,
       title: diary.title,
@@ -109,7 +139,11 @@ export class DiaryService {
           externalId: dp.place.externalId ?? null,
         })),
       tags: (diary.diaryTags ?? []).map((dt: any) => dt.tag.name),
-      images: images.map((img: any) => ({ id: img.id, url: img.url, order: img.order })),
+      images: images.map((img: any) => ({
+        id: img.id,
+        url: img.url,
+        order: img.order,
+      })),
       coverImageUrl: cover?.url ?? null,
       commentCount: diary._count?.comments ?? 0,
       createdAt: diary.createdAt,
@@ -127,15 +161,18 @@ export class DiaryService {
     if (!content.trim()) throw new BadRequestException('content is required');
 
     const recordDate = new Date(body.recordDate);
-    if (Number.isNaN(recordDate.getTime())) throw new BadRequestException('Invalid recordDate');
+    if (Number.isNaN(recordDate.getTime()))
+      throw new BadRequestException('Invalid recordDate');
 
     const isScheduled = Boolean(body.isScheduled);
     const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
     if (isScheduled && (!scheduledAt || Number.isNaN(scheduledAt.getTime()))) {
-      throw new BadRequestException('scheduledAt is required for scheduled diary');
+      throw new BadRequestException(
+        'scheduledAt is required for scheduled diary',
+      );
     }
 
-    const visibility = (body.visibility ?? 'BOTH') as 'BOTH' | 'PRIVATE';
+    const visibility = body.visibility ?? 'BOTH';
 
     // Optional places: upsert from Google (canonical)
     const googlePlaceIds = [
@@ -193,14 +230,22 @@ export class DiaryService {
       // Images
       const createdImages = await Promise.all(
         images.map((url, index) =>
-          tx.diaryImage.create({ data: { diaryId: diary.id, url, order: index }, select: { id: true, url: true } }),
+          tx.diaryImage.create({
+            data: { diaryId: diary.id, url, order: index },
+            select: { id: true, url: true },
+          }),
         ),
       );
 
       if (body.coverImageUrl) {
-        const cover = createdImages.find((i: any) => i.url === body.coverImageUrl);
+        const cover = createdImages.find(
+          (i: any) => i.url === body.coverImageUrl,
+        );
         if (cover) {
-          await tx.diary.update({ where: { id: diary.id }, data: { coverImageId: cover.id } });
+          await tx.diary.update({
+            where: { id: diary.id },
+            data: { coverImageId: cover.id },
+          });
         }
       }
 
@@ -218,7 +263,12 @@ export class DiaryService {
             await tx.placeMarker.upsert({
               where: { coupleId_placeId: { coupleId, placeId: pid } },
               update: { deletedAt: null, diaryId: diary.id },
-              create: { coupleId, placeId: pid, categoryId: defaultCategoryId, diaryId: diary.id },
+              create: {
+                coupleId,
+                placeId: pid,
+                categoryId: defaultCategoryId,
+                diaryId: diary.id,
+              },
             });
           }),
         );
@@ -236,7 +286,22 @@ export class DiaryService {
       });
     });
 
-    return { data: this.mapDiary(created) };
+    const data = this.mapDiary(created);
+    const now = new Date();
+
+    const shouldNotifyPartner =
+      data.visibility === 'BOTH' &&
+      (!data.isScheduled || (data.scheduledAt && now >= data.scheduledAt));
+    if (shouldNotifyPartner) {
+      await this.pushService.sendToCoupleExcept(coupleId, userId, {
+        title: '새 다이어리',
+        body: data.title,
+        url: `/diary/${data.id}`,
+        tag: `diary:${data.id}`,
+      });
+    }
+
+    return { data };
   }
 
   async list(userId: string) {
@@ -252,7 +317,10 @@ export class DiaryService {
           { authorId: userId },
           {
             visibility: 'BOTH',
-            OR: [{ isScheduled: false }, { isScheduled: true, scheduledAt: { lte: now } }],
+            OR: [
+              { isScheduled: false },
+              { isScheduled: true, scheduledAt: { lte: now } },
+            ],
           },
         ],
       },
@@ -281,23 +349,29 @@ export class DiaryService {
         places: { include: { place: true }, orderBy: { order: 'asc' } },
         comments: {
           where: { deletedAt: null },
-          include: { author: { select: { id: true, nickname: true, email: true } } },
+          include: {
+            author: { select: { id: true, nickname: true, email: true } },
+          },
           orderBy: { createdAt: 'asc' },
         },
         _count: { select: { comments: { where: { deletedAt: null } } } },
       },
     });
     if (!diary) throw new NotFoundException('Diary not found');
-    if (!this.canViewDiary(new Date(), userId, diary)) throw new ForbiddenException('Forbidden');
+    if (!this.canViewDiary(new Date(), userId, diary))
+      throw new ForbiddenException('Forbidden');
     return { data: this.mapDiary(diary) };
   }
 
   async update(userId: string, id: string, body: UpdateDiaryDto) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.diary.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.diary.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Diary not found');
-    if (existing.authorId !== userId) throw new ForbiddenException('Only author can update');
+    if (existing.authorId !== userId)
+      throw new ForbiddenException('Only author can update');
 
     const data: any = {};
     if (body.title !== undefined) {
@@ -310,15 +384,19 @@ export class DiaryService {
       if (!content.trim()) throw new BadRequestException('content is required');
       data.content = content;
     }
-    if (body.mood !== undefined) data.mood = body.mood?.trim() ? body.mood.trim() : null;
-    if (body.weather !== undefined) data.weather = body.weather?.trim() ? body.weather.trim() : null;
+    if (body.mood !== undefined)
+      data.mood = body.mood?.trim() ? body.mood.trim() : null;
+    if (body.weather !== undefined)
+      data.weather = body.weather?.trim() ? body.weather.trim() : null;
     if (body.recordDate !== undefined) {
       const recordDate = new Date(body.recordDate);
-      if (Number.isNaN(recordDate.getTime())) throw new BadRequestException('Invalid recordDate');
+      if (Number.isNaN(recordDate.getTime()))
+        throw new BadRequestException('Invalid recordDate');
       data.recordDate = recordDate;
     }
     if (body.visibility !== undefined) data.visibility = body.visibility;
-    if (body.isScheduled !== undefined) data.isScheduled = Boolean(body.isScheduled);
+    if (body.isScheduled !== undefined)
+      data.isScheduled = Boolean(body.isScheduled);
     if (body.scheduledAt !== undefined) {
       data.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
     }
@@ -328,16 +406,24 @@ export class DiaryService {
       if (body.googlePlaceId === null || body.googlePlaceId === '') {
         placeId = null;
       } else {
-        const selected = await this.placesService.select(userId, body.googlePlaceId);
+        const selected = await this.placesService.select(
+          userId,
+          body.googlePlaceId,
+        );
         placeId = ((selected as any).place as { id: string }).id;
       }
       data.placeId = placeId;
     }
 
     const tags = body.tags
-      ? body.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 20)
+      ? body.tags
+          .map((t) => String(t).trim())
+          .filter(Boolean)
+          .slice(0, 20)
       : null;
-    const images = body.images ? body.images.filter(Boolean).slice(0, 10) : null;
+    const images = body.images
+      ? body.images.filter(Boolean).slice(0, 10)
+      : null;
 
     const updated = await prisma.$transaction(async (tx: any) => {
       await tx.diary.update({ where: { id }, data });
@@ -357,19 +443,31 @@ export class DiaryService {
       }
 
       if (images) {
-        await tx.diaryImage.updateMany({ where: { diaryId: id, deletedAt: null }, data: { deletedAt: new Date() } });
+        await tx.diaryImage.updateMany({
+          where: { diaryId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
         const createdImages = await Promise.all(
           images.map((url, index) =>
-            tx.diaryImage.create({ data: { diaryId: id, url, order: index }, select: { id: true, url: true } }),
+            tx.diaryImage.create({
+              data: { diaryId: id, url, order: index },
+              select: { id: true, url: true },
+            }),
           ),
         );
 
         const desired = body.coverImageUrl ?? null;
         if (desired) {
           const cover = createdImages.find((i: any) => i.url === desired);
-          await tx.diary.update({ where: { id }, data: { coverImageId: cover?.id ?? null } });
+          await tx.diary.update({
+            where: { id },
+            data: { coverImageId: cover?.id ?? null },
+          });
         } else if (body.coverImageUrl === null) {
-          await tx.diary.update({ where: { id }, data: { coverImageId: null } });
+          await tx.diary.update({
+            where: { id },
+            data: { coverImageId: null },
+          });
         }
       }
 
@@ -383,10 +481,20 @@ export class DiaryService {
         }
 
         // soft-delete existing joins not present anymore
-        const existingJoins = await tx.diaryPlace.findMany({ where: { diaryId: id }, select: { placeId: true } });
+        const existingJoins = await tx.diaryPlace.findMany({
+          where: { diaryId: id },
+          select: { placeId: true },
+        });
         const existingIds = existingJoins.map((j: any) => j.placeId);
         await tx.diaryPlace.updateMany({
-          where: { diaryId: id, placeId: { in: existingIds.filter((pid: string) => !selectedPlaceIds.includes(pid)) } },
+          where: {
+            diaryId: id,
+            placeId: {
+              in: existingIds.filter(
+                (pid: string) => !selectedPlaceIds.includes(pid),
+              ),
+            },
+          },
           data: { deletedAt: new Date() },
         });
 
@@ -401,13 +509,21 @@ export class DiaryService {
             await tx.placeMarker.upsert({
               where: { coupleId_placeId: { coupleId, placeId: pid } },
               update: { deletedAt: null, diaryId: id },
-              create: { coupleId, placeId: pid, categoryId: defaultCategoryId, diaryId: id },
+              create: {
+                coupleId,
+                placeId: pid,
+                categoryId: defaultCategoryId,
+                diaryId: id,
+              },
             });
           }),
         );
 
         // keep legacy single place in sync
-        await tx.diary.update({ where: { id }, data: { placeId: selectedPlaceIds[0] ?? null } });
+        await tx.diary.update({
+          where: { id },
+          data: { placeId: selectedPlaceIds[0] ?? null },
+        });
       }
 
       return tx.diary.findFirst({
@@ -428,23 +544,34 @@ export class DiaryService {
   async remove(userId: string, id: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const existing = await prisma.diary.findFirst({ where: { id, coupleId, deletedAt: null } });
+    const existing = await prisma.diary.findFirst({
+      where: { id, coupleId, deletedAt: null },
+    });
     if (!existing) throw new NotFoundException('Diary not found');
-    if (existing.authorId !== userId) throw new ForbiddenException('Only author can delete');
+    if (existing.authorId !== userId)
+      throw new ForbiddenException('Only author can delete');
 
-    await prisma.diary.update({ where: { id }, data: { deletedAt: new Date() } });
+    await prisma.diary.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 
   async listComments(userId: string, diaryId: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const diary = await prisma.diary.findFirst({ where: { id: diaryId, coupleId, deletedAt: null } });
+    const diary = await prisma.diary.findFirst({
+      where: { id: diaryId, coupleId, deletedAt: null },
+    });
     if (!diary) throw new NotFoundException('Diary not found');
-    if (!this.canViewDiary(new Date(), userId, diary)) throw new ForbiddenException('Forbidden');
+    if (!this.canViewDiary(new Date(), userId, diary))
+      throw new ForbiddenException('Forbidden');
     const comments = await prisma.diaryComment.findMany({
       where: { diaryId, deletedAt: null },
-      include: { author: { select: { id: true, nickname: true, email: true } } },
+      include: {
+        author: { select: { id: true, nickname: true, email: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     return { data: comments };
@@ -453,24 +580,35 @@ export class DiaryService {
   async addComment(userId: string, diaryId: string, content: string) {
     const prisma = this.prisma as any;
     const coupleId = await this.ensureCoupleId(userId);
-    const diary = await prisma.diary.findFirst({ where: { id: diaryId, coupleId, deletedAt: null } });
+    const diary = await prisma.diary.findFirst({
+      where: { id: diaryId, coupleId, deletedAt: null },
+    });
     if (!diary) throw new NotFoundException('Diary not found');
-    if (!this.canViewDiary(new Date(), userId, diary)) throw new ForbiddenException('Forbidden');
+    if (!this.canViewDiary(new Date(), userId, diary))
+      throw new ForbiddenException('Forbidden');
     const text = content.trim();
     if (!text) throw new BadRequestException('content is required');
     const created = await prisma.diaryComment.create({
       data: { diaryId, authorId: userId, content: text },
-      include: { author: { select: { id: true, nickname: true, email: true } } },
+      include: {
+        author: { select: { id: true, nickname: true, email: true } },
+      },
     });
     return { data: created };
   }
 
   async deleteComment(userId: string, commentId: string) {
     const prisma = this.prisma as any;
-    const comment = await prisma.diaryComment.findFirst({ where: { id: commentId, deletedAt: null } });
+    const comment = await prisma.diaryComment.findFirst({
+      where: { id: commentId, deletedAt: null },
+    });
     if (!comment) throw new NotFoundException('Comment not found');
-    if (comment.authorId !== userId) throw new ForbiddenException('Only author can delete');
-    await prisma.diaryComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    if (comment.authorId !== userId)
+      throw new ForbiddenException('Only author can delete');
+    await prisma.diaryComment.update({
+      where: { id: commentId },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 }

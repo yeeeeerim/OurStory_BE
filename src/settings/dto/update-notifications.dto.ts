@@ -3,4 +3,5 @@ export class UpdateNotificationsDto {
   anniversaryNotify?: boolean;
   diaryReminder?: boolean;
   emailNotify?: boolean;
+  dashboardAnniversaryId?: string | null;
 }

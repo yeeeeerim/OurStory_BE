@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { CreatePlaceLogDto } from './dto/create-place-log.dto';
 import { PlaceLogsService } from './place-logs.service';
@@ -9,8 +18,16 @@ export class PlaceLogsController {
   constructor(private readonly service: PlaceLogsService) {}
 
   @Get()
-  list(@Request() req, @Query('page') page?: string, @Query('size') size?: string) {
-    return this.service.list(req.user.userId, Number(page || '1'), Number(size || '20'));
+  list(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+  ) {
+    return this.service.list(
+      req.user.userId,
+      Number(page || '1'),
+      Number(size || '20'),
+    );
   }
 
   @Get('marker/:placeMarkerId')
@@ -23,4 +40,3 @@ export class PlaceLogsController {
     return this.service.create(req.user.userId, body);
   }
 }
-

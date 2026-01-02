@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 type PlaceCategorySummary = {
@@ -131,7 +135,10 @@ export class PlaceCategoriesService {
 
     const now = new Date();
     await prisma.$transaction(async (tx: any) => {
-      await tx.placeCategory.update({ where: { id }, data: { deletedAt: now } });
+      await tx.placeCategory.update({
+        where: { id },
+        data: { deletedAt: now },
+      });
 
       const markers = await tx.placeMarker.findMany({
         where: { coupleId, categoryId: id, deletedAt: null },
@@ -146,7 +153,11 @@ export class PlaceCategoriesService {
         });
 
         const logs = await tx.placeLog.findMany({
-          where: { coupleId, placeMarkerId: { in: markerIds }, deletedAt: null },
+          where: {
+            coupleId,
+            placeMarkerId: { in: markerIds },
+            deletedAt: null,
+          },
           select: { id: true },
         });
         const logIds = logs.map((l: any) => l.id);

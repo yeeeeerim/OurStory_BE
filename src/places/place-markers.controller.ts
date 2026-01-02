@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { CreatePlaceMarkerDto } from './dto/create-place-marker.dto';
 import type { SavePlaceMarkerDto } from './dto/save-place-marker.dto';
@@ -26,12 +37,20 @@ export class PlaceMarkersController {
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() body: UpdatePlaceMarkerDto) {
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: UpdatePlaceMarkerDto,
+  ) {
     return this.service.update(req.user.userId, id, body);
   }
 
   @Delete(':id')
-  remove(@Request() req, @Param('id') id: string, @Query('force') force?: string) {
+  remove(
+    @Request() req,
+    @Param('id') id: string,
+    @Query('force') force?: string,
+  ) {
     return this.service.remove(req.user.userId, id, force === 'true');
   }
 }

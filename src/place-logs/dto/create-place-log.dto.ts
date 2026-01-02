@@ -19,4 +19,3 @@ export class CreatePlaceLogDto {
   @IsOptional()
   mediaIds?: string[];
 }
-

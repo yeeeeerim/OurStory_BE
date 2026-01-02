@@ -12,4 +12,3 @@ export class CreatePlaceCategoryDto {
   @IsString()
   icon?: string;
 }
-

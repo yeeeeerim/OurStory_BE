@@ -5,4 +5,3 @@ export class SelectPlaceDto {
   @MinLength(1)
   placeId!: string;
 }
-
